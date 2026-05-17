@@ -1,17 +1,34 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react'
-import { Scene, TextOverlay } from '@/store/presentation-store'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
+import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
+import { MediaRenderer } from '@/components/presentation/media-renderer'
 
 interface OutputState {
   type: 'empty' | 'black' | 'scene'
   scene?: Scene
   overlays?: TextOverlay[]
+  transitionType?: TransitionType
+  transitionDuration?: number
+}
+
+/**
+ * Get the CSS animation class for a given transition type and phase.
+ */
+function getTransitionClass(type: TransitionType, phase: 'enter' | 'exit'): string {
+  if (type === 'none') return ''
+  return `transition-${type}-${phase}`
 }
 
 export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const handleFullscreen = () => {
+    if (containerRef.current) {
+      containerRef.current.requestFullscreen?.()
+    }
+  }
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -22,7 +39,6 @@ export default function OutputPage() {
 
     window.addEventListener('message', handler)
 
-    // Signal to parent that we're ready
     if (window.opener) {
       window.opener.postMessage({ type: 'OUTPUT_READY' }, '*')
     }
@@ -30,12 +46,8 @@ export default function OutputPage() {
     return () => window.removeEventListener('message', handler)
   }, [])
 
-  // Request fullscreen on click
-  const handleFullscreen = () => {
-    if (containerRef.current) {
-      containerRef.current.requestFullscreen?.()
-    }
-  }
+  const transitionType = state.transitionType || 'none'
+  const transitionDuration = state.transitionDuration || DEFAULT_TRANSITION_DURATION
 
   const renderScene = () => {
     if (state.type === 'black') {
@@ -52,60 +64,31 @@ export default function OutputPage() {
 
     const scene = state.scene
 
+    // No transition - instant
+    if (transitionType === 'none') {
+      return (
+        <div className="absolute inset-0">
+          <MediaRenderer scene={scene} isActive={true} />
+        </div>
+      )
+    }
+
+    // With transition - use key to trigger CSS animation on scene change
+    const enterClass = getTransitionClass(transitionType, 'enter')
+    const style = {
+      '--transition-duration': `${transitionDuration}ms`,
+      animationDuration: `${transitionDuration}ms`,
+    } as React.CSSProperties
+
     return (
-      <div className="absolute inset-0">
-        {scene.type === 'image' && (
-          <div className="w-full h-full flex items-center justify-center bg-black">
-            <img src={scene.src} alt={scene.name || 'Image'} className="max-w-full max-h-full object-contain" />
-          </div>
-        )}
-
-        {scene.type === 'video' && (
-          <div className="w-full h-full flex items-center justify-center bg-black">
-            <video
-              src={scene.src}
-              className="max-w-full max-h-full object-contain"
-              autoPlay
-              loop
-              controls={false}
-            />
-          </div>
-        )}
-
-        {scene.type === 'web' && (
-          <iframe
-            src={scene.url}
-            className="w-full h-full border-0"
-            title={scene.name}
-            sandbox="allow-scripts allow-same-origin allow-popups"
-          />
-        )}
-
-        {scene.type === 'text' && (
-          <div
-            className="w-full h-full flex items-center justify-center p-16"
-            style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}
-          >
-            <div
-              className="max-w-[90%] break-words"
-              style={{
-                fontSize: `${scene.fontSize || 48}px`,
-                color: scene.fontColor || '#ffffff',
-                textAlign: scene.textAlign || 'center',
-                fontFamily: 'Arial, sans-serif',
-                lineHeight: 1.4,
-              }}
-            >
-              {scene.content}
-            </div>
-          </div>
-        )}
-
-        {scene.type === 'pptx-slide' && (
-          <div className="w-full h-full flex items-center justify-center bg-black">
-            <img src={scene.src} alt={scene.name || 'PPTX Slide'} className="max-w-full max-h-full object-contain" />
-          </div>
-        )}
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          key={scene.id}
+          className={`w-full h-full ${enterClass}`}
+          style={style}
+        >
+          <MediaRenderer scene={scene} isActive={true} />
+        </div>
       </div>
     )
   }
@@ -125,7 +108,7 @@ export default function OutputPage() {
         return (
           <div
             key={overlay.id}
-            className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4`}
+            className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4 z-50`}
           >
             <div
               className="px-6 py-3 rounded-lg inline-block max-w-full"

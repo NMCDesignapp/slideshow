@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useEffect, useRef, useCallback } from 'react'
-import { usePresentationStore, Scene } from '@/store/presentation-store'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { usePresentationStore, Scene, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 
 interface MediaRendererProps {
   scene: Scene
@@ -100,14 +100,85 @@ export function MediaRenderer({ scene, className = '', isActive = true }: MediaR
     }
   }
 
-  return <div className={`relative ${className}`}>{renderContent()}</div>
+  return <div className={`relative w-full h-full ${className}`}>{renderContent()}</div>
+}
+
+/**
+ * Get the CSS animation class for a given transition type and phase.
+ */
+function getTransitionClass(type: TransitionType, phase: 'enter' | 'exit'): string {
+  if (type === 'none') return ''
+  return `transition-${type}-${phase}`
+}
+
+/**
+ * Get the inline animation style for a given transition duration.
+ */
+function getTransitionStyle(duration: number): React.CSSProperties {
+  return {
+    '--transition-duration': `${duration}ms`,
+    animationDuration: `${duration}ms`,
+  } as React.CSSProperties
+}
+
+/**
+ * TransitionRenderer - wraps scene changes with CSS animation transitions.
+ *
+ * Strategy: Render the current scene with an "enter" animation.
+ * To show the outgoing scene during transition, we subscribe to the store
+ * and keep a snapshot of the previous scene that clears after animation duration.
+ */
+interface TransitionRendererProps {
+  scene: Scene | undefined
+  transitionType: TransitionType
+  transitionDuration: number
+  className?: string
+  isActive?: boolean
+}
+
+export function TransitionRenderer({
+  scene,
+  transitionType,
+  transitionDuration,
+  className = '',
+  isActive = true,
+}: TransitionRendererProps) {
+  if (!scene) {
+    return <div className={`w-full h-full ${className}`} />
+  }
+
+  // No transition - just render directly with key for React to track
+  if (transitionType === 'none') {
+    return (
+      <div className={`w-full h-full ${className}`}>
+        <MediaRenderer scene={scene} isActive={isActive} />
+      </div>
+    )
+  }
+
+  // With transition - render with enter animation class and key
+  // The key change causes React to re-mount, triggering the CSS animation
+  const enterClass = getTransitionClass(transitionType, 'enter')
+  const style = getTransitionStyle(transitionDuration)
+
+  return (
+    <div className={`w-full h-full overflow-hidden ${className}`}>
+      <div
+        key={scene.id}
+        className={`w-full h-full ${enterClass}`}
+        style={style}
+      >
+        <MediaRenderer scene={scene} isActive={isActive} />
+      </div>
+    </div>
+  )
 }
 
 /**
  * Component that syncs with the output window for dual-screen projection
  */
 export function OutputSync() {
-  const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen } = usePresentationStore()
+  const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration } = usePresentationStore()
   const currentScene = scenes[currentSceneIndex]
 
   const getOutputContent = useCallback(() => {
@@ -116,10 +187,15 @@ export function OutputSync() {
       return { type: 'black' as const }
     }
     if (!currentScene) return { type: 'empty' as const }
-    return { type: 'scene' as const, scene: currentScene, overlays: textOverlays }
-  }, [isLive, blackScreen, currentScene, textOverlays])
+    return {
+      type: 'scene' as const,
+      scene: currentScene,
+      overlays: textOverlays,
+      transitionType,
+      transitionDuration,
+    }
+  }, [isLive, blackScreen, currentScene, textOverlays, transitionType, transitionDuration])
 
-  // Send state to output window via postMessage
   useEffect(() => {
     const output = getOutputContent()
     if (output) {

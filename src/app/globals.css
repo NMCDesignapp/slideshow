@@ -154,3 +154,198 @@
 .live-indicator {
   animation: live-pulse 1.5s ease-in-out infinite;
 }
+
+/* ========================================
+   Scene Transition Animations
+   ======================================== */
+
+/* Container for transitions - needs perspective for 3D effects */
+.transition-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.transition-container > * {
+  position: absolute;
+  inset: 0;
+}
+
+/* Fade */
+.transition-fade-enter {
+  animation: t-fade-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-fade-exit {
+  animation: t-fade-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes t-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Dissolve - cross-fade with slight scale */
+.transition-dissolve-enter {
+  animation: t-dissolve-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-dissolve-exit {
+  animation: t-dissolve-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-dissolve-in {
+  from { opacity: 0; transform: scale(1.02); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes t-dissolve-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.98); }
+}
+
+/* Slide Left (new slides in from right) */
+.transition-slide-left-enter {
+  animation: t-slide-left-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-slide-left-exit {
+  animation: t-slide-left-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-slide-left-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes t-slide-left-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* Slide Right (new slides in from left) */
+.transition-slide-right-enter {
+  animation: t-slide-right-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-slide-right-exit {
+  animation: t-slide-right-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-slide-right-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes t-slide-right-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+/* Slide Up (new slides in from bottom) */
+.transition-slide-up-enter {
+  animation: t-slide-up-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-slide-up-exit {
+  animation: t-slide-up-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-slide-up-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes t-slide-up-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100%); }
+}
+
+/* Slide Down (new slides in from top) */
+.transition-slide-down-enter {
+  animation: t-slide-down-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-slide-down-exit {
+  animation: t-slide-down-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-slide-down-in {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+@keyframes t-slide-down-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+/* Zoom In */
+.transition-zoom-in-enter {
+  animation: t-zoom-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-zoom-in-exit {
+  animation: t-zoom-in-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-zoom-in {
+  from { transform: scale(0.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes t-zoom-in-out {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(1.5); opacity: 0; }
+}
+
+/* Zoom Out */
+.transition-zoom-out-enter {
+  animation: t-zoom-out var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-zoom-out-exit {
+  animation: t-zoom-out-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-zoom-out {
+  from { transform: scale(2); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes t-zoom-out-out {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.3); opacity: 0; }
+}
+
+/* Wipe Left (clip-path reveal from right to left) */
+.transition-wipe-left-enter {
+  animation: t-wipe-left var(--transition-duration, 600ms) ease-out forwards;
+}
+@keyframes t-wipe-left {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* Wipe Right (clip-path reveal from left to right) */
+.transition-wipe-right-enter {
+  animation: t-wipe-right var(--transition-duration, 600ms) ease-out forwards;
+}
+@keyframes t-wipe-right {
+  from { clip-path: inset(0 0 0 100%); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* Flip */
+.transition-flip-enter {
+  animation: t-flip-in var(--transition-duration, 600ms) ease-out forwards;
+  backface-visibility: hidden;
+}
+.transition-flip-exit {
+  animation: t-flip-out var(--transition-duration, 600ms) ease-in forwards;
+  backface-visibility: hidden;
+}
+@keyframes t-flip-in {
+  from { transform: perspective(1200px) rotateY(-90deg); opacity: 0; }
+  to { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+}
+@keyframes t-flip-out {
+  from { transform: perspective(1200px) rotateY(0deg); opacity: 1; }
+  to { transform: perspective(1200px) rotateY(90deg); opacity: 0; }
+}
+
+/* Rotate */
+.transition-rotate-enter {
+  animation: t-rotate-in var(--transition-duration, 600ms) ease-out forwards;
+}
+.transition-rotate-exit {
+  animation: t-rotate-out var(--transition-duration, 600ms) ease-in forwards;
+}
+@keyframes t-rotate-in {
+  from { transform: rotate(15deg) scale(0.8); opacity: 0; }
+  to { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+@keyframes t-rotate-out {
+  from { transform: rotate(0deg) scale(1); opacity: 1; }
+  to { transform: rotate(-15deg) scale(0.8); opacity: 0; }
+}

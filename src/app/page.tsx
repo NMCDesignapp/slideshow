@@ -8,7 +8,6 @@ import { OutputSync } from '@/components/presentation/media-renderer'
 import {
   MonitorUp,
   Keyboard,
-  Github,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -33,12 +32,13 @@ export default function Home() {
     isLive,
     outputWindowRef,
     textOverlays,
+    transitionType,
+    transitionDuration,
   } = usePresentationStore()
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Don't capture if user is typing in an input
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -91,6 +91,8 @@ export default function Home() {
                   type: 'scene',
                   scene: currentScene,
                   overlays: textOverlays,
+                  transitionType,
+                  transitionDuration,
                 }
               : { type: 'empty' },
         },
@@ -99,7 +101,7 @@ export default function Home() {
     } catch {
       // Window might be closed
     }
-  }, [isLive, scenes, currentSceneIndex, blackScreen, outputWindowRef, textOverlays])
+  }, [isLive, scenes, currentSceneIndex, blackScreen, outputWindowRef, textOverlays, transitionType, transitionDuration])
 
   return (
     <TooltipProvider delayDuration={300}>

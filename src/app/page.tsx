@@ -5,6 +5,7 @@ import { usePresentationStore } from '@/store/presentation-store'
 import { PreviewPanel } from '@/components/presentation/preview-panel'
 import { SceneList, TextOverlayPanel, ControlPanel } from '@/components/presentation/scene-list'
 import { OutputSync } from '@/components/presentation/media-renderer'
+import { Toaster, toast } from 'sonner'
 import {
   MonitorUp,
   Keyboard,
@@ -75,40 +76,12 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
-  // Sync output window whenever state changes
-  useEffect(() => {
-    if (!isLive) return
-    const win = outputWindowRef
-    if (!win || win.closed) return
-
-    try {
-      const currentScene = scenes[currentSceneIndex]
-      win.postMessage(
-        {
-          type: 'PRESENTATION_UPDATE',
-          payload: blackScreen
-            ? { type: 'black' }
-            : currentScene
-              ? {
-                  type: 'scene',
-                  scene: currentScene,
-                  overlays: textOverlays,
-                  transitionType,
-                  transitionDuration,
-                  videoVolume,
-                  videoMuted,
-                }
-              : { type: 'empty' },
-        },
-        '*'
-      )
-    } catch {
-      // Window might be closed
-    }
-  }, [isLive, scenes, currentSceneIndex, blackScreen, outputWindowRef, textOverlays, transitionType, transitionDuration, videoVolume, videoMuted])
+  // Output sync is now handled entirely by OutputSync component
+  // (removed duplicate postMessage logic that was sending data twice)
 
   return (
     <TooltipProvider delayDuration={300}>
+      <Toaster theme="dark" position="bottom-right" />
       <div className="h-screen flex flex-col bg-zinc-950 text-white overflow-hidden">
         {/* Header - ultra minimal */}
         <header className="flex items-center gap-3 px-4 py-1 bg-zinc-900/60 border-b border-zinc-800/60">

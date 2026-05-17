@@ -29,24 +29,8 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
 
   slideFiles.sort((a, b) => a.index - b.index)
 
-  // Extract images from the PPTX
+  // Extract images from the PPTX (single pass, properly awaited)
   const imageMap = new Map<string, string>()
-  zip.forEach((relativePath, zipEntry) => {
-    if (relativePath.startsWith('ppt/media/') && !zipEntry.dir) {
-      zipEntry.async('base64').then((base64) => {
-        const ext = relativePath.split('.').pop()?.toLowerCase()
-        let mimeType = 'image/png'
-        if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg'
-        else if (ext === 'gif') mimeType = 'image/gif'
-        else if (ext === 'bmp') mimeType = 'image/bmp'
-        else if (ext === 'tiff' || ext === 'tif') mimeType = 'image/tiff'
-        else if (ext === 'svg') mimeType = 'image/svg+xml'
-        imageMap.set(relativePath, `data:${mimeType};base64,${base64}`)
-      })
-    }
-  })
-
-  // Wait for all images to be extracted
   const imageEntries: Promise<void>[] = []
   zip.forEach((relativePath, zipEntry) => {
     if (relativePath.startsWith('ppt/media/') && !zipEntry.dir) {
@@ -57,6 +41,7 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
           if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg'
           else if (ext === 'gif') mimeType = 'image/gif'
           else if (ext === 'bmp') mimeType = 'image/bmp'
+          else if (ext === 'tiff' || ext === 'tif') mimeType = 'image/tiff'
           else if (ext === 'svg') mimeType = 'image/svg+xml'
           imageMap.set(relativePath, `data:${mimeType};base64,${base64}`)
         })
@@ -65,13 +50,41 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
   })
   await Promise.all(imageEntries)
 
+  // Parse relationship files to map rId -> media path
+  const relsMap = new Map<string, Map<string, string>>() // slide rels: slidePath -> (rId -> mediaPath)
+  const relsEntries: Promise<void>[] = []
+  zip.forEach((relativePath, zipEntry) => {
+    if (relativePath.match(/^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/) && !zipEntry.dir) {
+      relsEntries.push(
+        zipEntry.async('string').then((relsXml) => {
+          const slideNum = relativePath.match(/slide(\d+)/)?.[1] || '1'
+          const rels = new Map<string, string>()
+          const relRegex = /<Relationship\s+Id="([^"]+)"\s+Type="[^"]*image[^"]*"\s+Target="([^"]+)"/g
+          let relMatch
+          while ((relMatch = relRegex.exec(relsXml)) !== null) {
+            // Target is relative to ppt/slides/, resolve to full path
+            let target = relMatch[2]
+            if (target.startsWith('../')) {
+              target = 'ppt/' + target.replace('../', '')
+            } else {
+              target = 'ppt/slides/' + target
+            }
+            rels.set(relMatch[1], target)
+          }
+          relsMap.set(slideNum, rels)
+        })
+      )
+    }
+  })
+  await Promise.all(relsEntries)
+
   const slides: PptxSlide[] = []
 
   for (const slideFile of slideFiles) {
     const xml = await zip.file(slideFile.path)?.async('string')
     if (!xml) continue
 
-    const svg = await renderSlideToSvg(xml, imageMap, zip, slideFile.index)
+    const svg = await renderSlideToSvg(xml, imageMap, relsMap, slideFile.index)
     slides.push({ index: slideFile.index, svg })
   }
 
@@ -81,7 +94,7 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
 async function renderSlideToSvg(
   xml: string,
   imageMap: Map<string, string>,
-  zip: JSZip,
+  relsMap: Map<string, Map<string, string>>,
   slideIndex: number
 ): Promise<string> {
   // Standard slide dimensions (9144000 x 6858000 EMU = 10" x 7.5")
@@ -103,7 +116,7 @@ async function renderSlideToSvg(
       `<foreignObject x="${x}" y="${y}" width="${w}" height="${h}">` +
         `<div xmlns="http://www.w3.org/1999/xhtml" style="` +
         `font-size:${fontSize}px;` +
-        `color:${run.color || '#ffffff'};` +
+        `color:${run.color || '#333333'};` +
         `font-family:Arial,sans-serif;` +
         `font-weight:${run.bold ? 'bold' : 'normal'};` +
         `font-style:${run.italic ? 'italic' : 'normal'};` +
@@ -122,7 +135,11 @@ async function renderSlideToSvg(
     const y = (img.y / 6858000) * height
     const w = (img.w / 9144000) * width
     const h = (img.h / 6858000) * height
-    const src = imageMap.get(img.rId) || ''
+
+    // Resolve rId -> media path -> data URL
+    const slideRels = relsMap.get(String(slideIndex))
+    const mediaPath = slideRels?.get(img.rId)
+    const src = mediaPath ? imageMap.get(mediaPath) : imageMap.get(img.rId) || ''
 
     if (src) {
       shapes.push(
@@ -132,7 +149,7 @@ async function renderSlideToSvg(
   }
 
   // Parse background
-  let bgFill = '#1a1a2e'
+  let bgFill = '#ffffff'
   const bgMatch = xml.match(/<p:bg[^>]*>[\s\S]*?<a:solidFill>[\s\S]*?<a:srgbClr val="([^"]+)"/)
   if (bgMatch) {
     bgFill = `#${bgMatch[1]}`
@@ -197,7 +214,7 @@ function extractTextElements(xml: string): TextElement[] {
     if (fsMatch) fontSize = parseInt(fsMatch[1]) * 100
 
     // Get font color
-    let color = '#ffffff'
+    let color = '#333333'
     const colorMatch = spXml.match(/<a:srgbClr val="([^"]+)"/)
     if (colorMatch) color = `#${colorMatch[1]}`
 

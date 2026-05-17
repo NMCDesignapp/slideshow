@@ -394,7 +394,7 @@ export function OutputSync() {
         outputWindow.postMessage({
           type: 'PRESENTATION_UPDATE',
           payload: output,
-        }, '*')
+        }, window.location.origin)
       }
     } catch { /* Window may be closed */ }
 

@@ -48,11 +48,24 @@ import {
   Wifi,
   Copy,
   ExternalLink,
+  Trash,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { AddSceneDialog } from './add-scene-dialog'
+import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import {
   Select,
   SelectContent,
@@ -153,7 +166,7 @@ function SortableSceneItem({
 }
 
 export function SceneList() {
-  const { scenes, currentSceneIndex, setCurrentSceneIndex, removeScene, reorderScenes, addScene } =
+  const { scenes, currentSceneIndex, setCurrentSceneIndex, removeScene, reorderScenes, addScene, clearAllScenes } =
     usePresentationStore()
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -295,6 +308,29 @@ export function SceneList() {
           Danh sách
         </h3>
         <div className="flex items-center gap-1">
+          {/* Clear all button */}
+          {scenes.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm(`Xoá tất cả ${scenes.length} thành phần?`)) {
+                      clearAllScenes()
+                      toast.success('Đã xoá tất cả thành phần')
+                    }
+                  }}
+                  className="text-zinc-500 hover:text-red-400 h-6 w-6 p-0"
+                >
+                  <Trash className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                Xoá tất cả
+              </TooltipContent>
+            </Tooltip>
+          )}
           {/* Quick batch upload button */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -340,7 +376,10 @@ export function SceneList() {
                     scene={scene}
                     isActive={index === currentSceneIndex}
                     onClick={() => setCurrentSceneIndex(index)}
-                    onDelete={() => removeScene(scene.id)}
+                    onDelete={() => {
+                      removeScene(scene.id)
+                      toast.success(`Đã xoá "${scene.name}"`)
+                    }}
                   />
                 ))}
               </div>
@@ -373,6 +412,7 @@ export function TextOverlayPanel() {
     })
     setNewText('')
     setShowForm(false)
+    toast.success('Đã thêm thông báo')
   }
 
   return (
@@ -585,7 +625,7 @@ export function ControlPanel() {
                       }
                     : { type: 'empty' },
               },
-              '*'
+              window.location.origin
             )
           }
         } catch {
@@ -758,7 +798,10 @@ export function ControlPanel() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => saveProject?.()}
+              onClick={() => {
+                saveProject()
+                toast.success('Đã lưu dự án')
+              }}
               className="text-zinc-500 hover:text-emerald-400 h-6 gap-1 px-2"
             >
               <Save className="w-3 h-3" />
@@ -774,7 +817,10 @@ export function ControlPanel() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => loadProject?.()}
+              onClick={() => {
+                loadProject()
+                toast.success('Đã mở dự án')
+              }}
               className="text-zinc-500 hover:text-cyan-400 h-6 gap-1 px-2"
             >
               <FolderOpen className="w-3 h-3" />

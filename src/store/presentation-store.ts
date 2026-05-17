@@ -145,6 +145,9 @@ interface PresentationState {
   setTransitionDuration: (duration: number) => void
   setVideoVolume: (volume: number) => void
   setVideoMuted: (muted: boolean) => void
+  saveProject: () => void
+  loadProject: () => void
+  clearAllScenes: () => void
 }
 
 let sceneIdCounter = 0
@@ -261,4 +264,51 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   setVideoVolume: (volume) => set({ videoVolume: volume }),
 
   setVideoMuted: (muted) => set({ videoMuted: muted }),
+
+  saveProject: () => {
+    const state = get()
+    const projectData = {
+      scenes: state.scenes.map((s) => ({
+        ...s,
+        // Only persist URL-based or data-URL sources, not blob URLs
+        src: s.src?.startsWith('blob:') ? undefined : s.src,
+        thumbnail: s.thumbnail?.startsWith('blob:') ? undefined : s.thumbnail,
+      })),
+      currentSceneIndex: state.currentSceneIndex,
+      transitionType: state.transitionType,
+      transitionDuration: state.transitionDuration,
+      textOverlays: state.textOverlays,
+      videoVolume: state.videoVolume,
+      videoMuted: state.videoMuted,
+      savedAt: new Date().toISOString(),
+    }
+    try {
+      localStorage.setItem('showflow-project', JSON.stringify(projectData))
+    } catch {
+      console.error('Failed to save project')
+    }
+  },
+
+  loadProject: () => {
+    try {
+      const data = localStorage.getItem('showflow-project')
+      if (!data) return
+      const project = JSON.parse(data)
+      set({
+        scenes: project.scenes || [],
+        currentSceneIndex: project.currentSceneIndex ?? -1,
+        transitionType: project.transitionType || 'fade',
+        transitionDuration: project.transitionDuration || DEFAULT_TRANSITION_DURATION,
+        textOverlays: project.textOverlays || [],
+        videoVolume: project.videoVolume ?? 1,
+        videoMuted: project.videoMuted ?? false,
+      })
+    } catch {
+      console.error('Failed to load project')
+    }
+  },
+
+  clearAllScenes: () => {
+    set({ scenes: [], currentSceneIndex: -1, textOverlays: [] })
+  },
 }))

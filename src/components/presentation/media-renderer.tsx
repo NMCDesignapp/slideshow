@@ -3,6 +3,42 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { usePresentationStore, Scene, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 
+// === WEB AUDIO API KEEP-ALIVE ===
+// Prevents browser from throttling video/audio when the tab loses focus
+let audioContext: AudioContext | null = null
+let silenceOscillator: OscillatorNode | null = null
+let silenceGain: GainNode | null = null
+
+function startAudioKeepAlive() {
+  if (audioContext) return // already running
+  try {
+    audioContext = new AudioContext()
+    silenceGain = audioContext.createGain()
+    silenceGain.gain.value = 0.001 // nearly silent
+    silenceOscillator = audioContext.createOscillator()
+    silenceOscillator.frequency.value = 1 // sub-bass, inaudible
+    silenceOscillator.connect(silenceGain)
+    silenceGain.connect(audioContext.destination)
+    silenceOscillator.start()
+  } catch {
+    // AudioContext not available
+  }
+}
+
+function stopAudioKeepAlive() {
+  try {
+    silenceOscillator?.stop()
+    silenceOscillator?.disconnect()
+    silenceGain?.disconnect()
+    audioContext?.close()
+  } catch {
+    // ignore
+  }
+  audioContext = null
+  silenceOscillator = null
+  silenceGain = null
+}
+
 interface MediaRendererProps {
   scene: Scene
   className?: string
@@ -32,41 +68,57 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
     }
   }, [videoVolume, videoMuted])
 
-  // === BACKGROUND PLAYBACK FIX ===
+  // === ENHANCED BACKGROUND PLAYBACK FIX ===
   // Keep video playing when user switches to another app/tab
   useEffect(() => {
     if (!keepAlive || scene.type !== 'video') return
 
-    const handleVisibilityChange = () => {
+    // Start Web Audio API keep-alive to prevent browser throttling
+    startAudioKeepAlive()
+
+    const forcePlay = () => {
       if (!videoRef.current) return
+      if (videoRef.current.paused && !videoRef.current.ended && isActive) {
+        videoRef.current.play().catch(() => {})
+      }
+    }
+
+    const handleVisibilityChange = () => {
       if (document.hidden) {
         // Tab lost focus — force video to keep playing
-        if (!videoRef.current.paused) {
-          // Do nothing, video should keep playing
-        } else {
-          videoRef.current.play().catch(() => {})
-        }
+        forcePlay()
       } else {
         // Tab regained focus — ensure still playing
-        if (videoRef.current.paused && isActive) {
-          videoRef.current.play().catch(() => {})
-        }
+        forcePlay()
       }
     }
 
     const handleWindowBlur = () => {
       // Window lost focus (user switched app)
-      if (videoRef.current && videoRef.current.paused && isActive) {
-        videoRef.current.play().catch(() => {})
+      forcePlay()
+    }
+
+    // Periodic keep-alive: force play every 2 seconds as safety net
+    const keepAliveInterval = setInterval(forcePlay, 2000)
+
+    // Also handle the 'pause' event on the video element itself
+    const handleVideoPause = () => {
+      if (isActive && !videoRef.current?.ended) {
+        // Browser auto-paused; resume immediately
+        setTimeout(forcePlay, 50)
       }
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('blur', handleWindowBlur)
+    videoRef.current?.addEventListener('pause', handleVideoPause)
 
     return () => {
+      stopAudioKeepAlive()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('blur', handleWindowBlur)
+      videoRef.current?.removeEventListener('pause', handleVideoPause)
+      clearInterval(keepAliveInterval)
     }
   }, [keepAlive, scene.type, isActive])
 

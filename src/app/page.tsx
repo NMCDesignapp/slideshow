@@ -110,13 +110,13 @@ export default function Home() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="h-screen flex flex-col bg-zinc-950 text-white overflow-hidden">
-        {/* Header - minimal */}
-        <header className="flex items-center gap-3 px-4 py-1.5 bg-zinc-900/80 border-b border-zinc-800">
+        {/* Header - ultra minimal */}
+        <header className="flex items-center gap-3 px-4 py-1 bg-zinc-900/60 border-b border-zinc-800/60">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-              <MonitorUp className="w-4 h-4 text-white" />
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
+              <MonitorUp className="w-3.5 h-3.5 text-white" />
             </div>
-            <h1 className="text-sm font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent leading-tight">
+            <h1 className="text-xs font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent leading-tight">
               ShowFlow
             </h1>
           </div>
@@ -125,7 +125,7 @@ export default function Home() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1 text-[10px] text-zinc-600 cursor-help hover:text-zinc-400 transition-colors">
+              <div className="flex items-center gap-1 text-[9px] text-zinc-600 cursor-help hover:text-zinc-400 transition-colors">
                 <Keyboard className="w-3 h-3" />
                 <span className="hidden sm:inline">← → Space B</span>
               </div>
@@ -140,45 +140,47 @@ export default function Home() {
           </Tooltip>
         </header>
 
-        {/* Main content */}
+        {/* Main content - all in resizable vertical layout */}
         <div className="flex-1 min-h-0">
           <ResizablePanelGroup direction="vertical" className="h-full">
             {/* Preview area - top */}
-            <ResizablePanel defaultSize={55} minSize={30}>
-              <div className="h-full p-3 pb-1">
+            <ResizablePanel defaultSize={50} minSize={25}>
+              <div className="h-full p-2 pb-1">
                 <PreviewPanel />
               </div>
             </ResizablePanel>
 
             <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
-            {/* Bottom area - edit + controls */}
-            <ResizablePanel defaultSize={45} minSize={25}>
+            {/* Bottom area - edit + controls, all integrated */}
+            <ResizablePanel defaultSize={50} minSize={25}>
               <div className="h-full flex flex-col">
-                {/* Edit panels */}
-                <div className="flex-1 min-h-0 p-3 pt-1 pb-1">
+                {/* Edit panels - left: scene list, right: controls + overlays */}
+                <div className="flex-1 min-h-0 p-2 pt-1 pb-1">
                   <ResizablePanelGroup direction="horizontal">
                     {/* Scene list */}
-                    <ResizablePanel defaultSize={70} minSize={40}>
-                      <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2.5 overflow-hidden">
+                    <ResizablePanel defaultSize={55} minSize={35}>
+                      <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
                         <SceneList />
                       </div>
                     </ResizablePanel>
 
                     <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
-                    {/* Text overlays */}
-                    <ResizablePanel defaultSize={30} minSize={20}>
-                      <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2.5 overflow-hidden">
-                        <TextOverlayPanel />
+                    {/* Right panel: Controls on top, Overlays below */}
+                    <ResizablePanel defaultSize={45} minSize={25}>
+                      <div className="h-full flex flex-col gap-1">
+                        {/* Control panel - integrated into the editing area */}
+                        <div className="flex-[1.5] bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
+                          <ControlPanel />
+                        </div>
+                        {/* Text overlays */}
+                        <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden min-h-0">
+                          <TextOverlayPanel />
+                        </div>
                       </div>
                     </ResizablePanel>
                   </ResizablePanelGroup>
-                </div>
-
-                {/* Control bar - bottom strip */}
-                <div className="bg-zinc-900/80 border-t border-zinc-800 backdrop-blur-sm">
-                  <ControlPanel />
                 </div>
               </div>
             </ResizablePanel>

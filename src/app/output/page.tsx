@@ -14,6 +14,37 @@ interface OutputState {
   videoMuted?: boolean
 }
 
+// === WEB AUDIO API KEEP-ALIVE ===
+let outputAudioCtx: AudioContext | null = null
+let outputOsc: OscillatorNode | null = null
+let outputGain: GainNode | null = null
+
+function startOutputAudioKeepAlive() {
+  if (outputAudioCtx) return
+  try {
+    outputAudioCtx = new AudioContext()
+    outputGain = outputAudioCtx.createGain()
+    outputGain.gain.value = 0.001
+    outputOsc = outputAudioCtx.createOscillator()
+    outputOsc.frequency.value = 1
+    outputOsc.connect(outputGain)
+    outputGain.connect(outputAudioCtx.destination)
+    outputOsc.start()
+  } catch { /* ignore */ }
+}
+
+function stopOutputAudioKeepAlive() {
+  try {
+    outputOsc?.stop()
+    outputOsc?.disconnect()
+    outputGain?.disconnect()
+    outputAudioCtx?.close()
+  } catch { /* ignore */ }
+  outputAudioCtx = null
+  outputOsc = null
+  outputGain = null
+}
+
 export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
@@ -21,7 +52,6 @@ export default function OutputPage() {
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
 
   const handleFullscreen = () => {
     if (containerRef.current) {
@@ -29,10 +59,8 @@ export default function OutputPage() {
     }
   }
 
-  // === BACKGROUND PLAYBACK FIX ===
-  // Prevent the output window from throttling video when it loses focus
+  // === ENHANCED BACKGROUND PLAYBACK FIX ===
   useEffect(() => {
-    // Request a wake lock to prevent the browser from throttling
     let wakeLock: any = null
 
     const requestWakeLock = async () => {
@@ -40,23 +68,23 @@ export default function OutputPage() {
         if ('wakeLock' in navigator) {
           wakeLock = await (navigator as any).wakeLock.request('screen')
         }
-      } catch {
-        // Wake lock not available
-      }
+      } catch { /* not available */ }
     }
 
     requestWakeLock()
+    startOutputAudioKeepAlive()
 
-    // Re-request on visibility change
+    // Re-request wake lock on visibility change
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         requestWakeLock()
       }
+      // Force all videos to keep playing
+      forceAllVideosPlay()
     }
-    document.addEventListener('visibilitychange', handleVisibility)
 
     // Force video to keep playing on visibility change
-    const forcePlayOnHidden = () => {
+    const forceAllVideosPlay = () => {
       const videos = document.querySelectorAll('video')
       videos.forEach((v) => {
         if (v.paused && !v.ended) {
@@ -64,11 +92,57 @@ export default function OutputPage() {
         }
       })
     }
-    document.addEventListener('visibilitychange', forcePlayOnHidden)
+
+    // Periodic keep-alive: check every 2 seconds
+    const keepAliveInterval = setInterval(forceAllVideosPlay, 2000)
+
+    // Handle window blur (user switches to another app)
+    const handleWindowBlur = () => {
+      forceAllVideosPlay()
+    }
+
+    // Also intercept the 'pause' event on any video element
+    const handleVideoPauseGlobal = (e: Event) => {
+      const video = e.target as HTMLVideoElement
+      if (video && !video.ended) {
+        // Browser may have auto-paused; resume after tiny delay
+        setTimeout(() => {
+          video.play().catch(() => {})
+        }, 50)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    document.addEventListener('visibilitychange', forceAllVideosPlay)
+    window.addEventListener('blur', handleWindowBlur)
+
+    // Use MutationObserver to attach pause listeners to new video elements
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLVideoElement) {
+            node.addEventListener('pause', handleVideoPauseGlobal)
+          }
+        }
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    // Attach to any existing videos
+    document.querySelectorAll('video').forEach((v) => {
+      v.addEventListener('pause', handleVideoPauseGlobal)
+    })
 
     return () => {
+      stopOutputAudioKeepAlive()
       document.removeEventListener('visibilitychange', handleVisibility)
-      document.removeEventListener('visibilitychange', forcePlayOnHidden)
+      document.removeEventListener('visibilitychange', forceAllVideosPlay)
+      window.removeEventListener('blur', handleWindowBlur)
+      observer.disconnect()
+      clearInterval(keepAliveInterval)
+      document.querySelectorAll('video').forEach((v) => {
+        v.removeEventListener('pause', handleVideoPauseGlobal)
+      })
       if (wakeLock) wakeLock.release?.()
     }
   }, [])

@@ -63,47 +63,43 @@ export function AddSceneDialog() {
 
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'pptx') => {
-      const file = e.target.files?.[0]
-      if (!file) return
+      const files = e.target.files
+      if (!files || files.length === 0) return
 
       setLoading(true)
 
       try {
-        if (type === 'pptx') {
-          const slides = await parsePptx(file)
-          const pptxFileId = `pptx-${Date.now()}-${file.name}`
-          for (const slide of slides) {
-            const dataUrl = svgToDataUrl(slide.svg)
+        for (const file of Array.from(files)) {
+          if (type === 'pptx') {
+            const slides = await parsePptx(file)
+            const pptxFileId = `pptx-${Date.now()}-${file.name}`
+            for (const slide of slides) {
+              const dataUrl = svgToDataUrl(slide.svg)
+              addScene({
+                type: 'pptx-slide',
+                name: `Slide ${slide.index}`,
+                src: dataUrl,
+                slideIndex: slide.index,
+                pptxFileId,
+              })
+            }
+          } else if (type === 'image') {
+            const url = URL.createObjectURL(file)
             addScene({
-              type: 'pptx-slide',
-              name: `Slide ${slide.index}`,
-              src: dataUrl,
-              slideIndex: slide.index,
-              pptxFileId,
+              type: 'image',
+              name: file.name,
+              src: url,
+              thumbnail: url,
+            })
+          } else if (type === 'video') {
+            const url = URL.createObjectURL(file)
+            addScene({
+              type: 'video',
+              name: file.name,
+              src: url,
             })
           }
-          setOpen(false)
-          resetForm()
-          return
         }
-
-        const url = URL.createObjectURL(file)
-
-        if (type === 'image') {
-          addScene({
-            type: 'image',
-            name: file.name,
-            src: url,
-            thumbnail: url,
-          })
-        } else if (type === 'video') {
-          addScene({
-            type: 'video',
-            name: file.name,
-            src: url,
-          })
-        }
-
         setOpen(false)
         resetForm()
       } catch (err) {
@@ -155,19 +151,19 @@ export function AddSceneDialog() {
   }
 
   const modeOptions: { value: AddMode; label: string; icon: React.ReactNode }[] = [
-    { value: 'image', label: 'Hình ảnh', icon: <Image className="w-5 h-5" /> },
-    { value: 'video', label: 'Video', icon: <Video className="w-5 h-5" /> },
-    { value: 'web', label: 'Trang web', icon: <Globe className="w-5 h-5" /> },
-    { value: 'text', label: 'Văn bản', icon: <Type className="w-5 h-5" /> },
-    { value: 'pptx', label: 'PowerPoint', icon: <Presentation className="w-5 h-5" /> },
+    { value: 'image', label: 'Hình ảnh', icon: <Image className="w-4 h-4" /> },
+    { value: 'video', label: 'Video', icon: <Video className="w-4 h-4" /> },
+    { value: 'web', label: 'Trang web', icon: <Globe className="w-4 h-4" /> },
+    { value: 'text', label: 'Văn bản', icon: <Type className="w-4 h-4" /> },
+    { value: 'pptx', label: 'PowerPoint', icon: <Presentation className="w-4 h-4" /> },
   ]
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-          <Plus className="w-4 h-4" />
-          Thêm thành phần
+        <Button className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white h-7 px-2.5">
+          <Plus className="w-3.5 h-3.5" />
+          <span className="text-[10px]">Thêm</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[520px] bg-zinc-900 border-zinc-700 text-white">
@@ -176,12 +172,12 @@ export function AddSceneDialog() {
         </DialogHeader>
 
         {/* Mode selection */}
-        <div className="flex gap-2 flex-wrap mb-4">
+        <div className="flex gap-1.5 flex-wrap mb-4">
           {modeOptions.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setMode(opt.value)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
                 mode === opt.value
                   ? 'bg-emerald-600 text-white'
                   : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
@@ -197,10 +193,11 @@ export function AddSceneDialog() {
         {mode === 'image' && (
           <div className="space-y-4">
             <div>
-              <Label className="text-zinc-300">Tải file hình ảnh</Label>
+              <Label className="text-zinc-300">Tải file hình ảnh (chọn nhiều)</Label>
               <Input
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={(e) => handleFileUpload(e, 'image')}
                 className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
               />
@@ -225,10 +222,11 @@ export function AddSceneDialog() {
         {mode === 'video' && (
           <div className="space-y-4">
             <div>
-              <Label className="text-zinc-300">Tải file video</Label>
+              <Label className="text-zinc-300">Tải file video (chọn nhiều)</Label>
               <Input
                 type="file"
                 accept="video/*"
+                multiple
                 onChange={(e) => handleFileUpload(e, 'video')}
                 className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
               />
@@ -346,6 +344,7 @@ export function AddSceneDialog() {
               <Input
                 type="file"
                 accept=".pptx"
+                multiple
                 onChange={(e) => handleFileUpload(e, 'pptx')}
                 className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
               />

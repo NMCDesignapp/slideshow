@@ -58,6 +58,32 @@ function preloadScene(scene: Scene) {
   }
 }
 
+// === VIDEO PAUSE STATE ===
+let videoPausedByUser = false
+
+export function setVideoPaused(paused: boolean) {
+  videoPausedByUser = paused
+  // Also send postMessage to output window
+  try {
+    const outputWindow = usePresentationStore.getState().outputWindowRef
+    if (outputWindow && !outputWindow.closed) {
+      outputWindow.postMessage({
+        type: paused ? 'VIDEO_PAUSE' : 'VIDEO_PLAY',
+      }, window.location.origin)
+    }
+  } catch { /* ignore */ }
+  // Also send via API for remote devices
+  fetch('/api/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: paused ? 'VIDEO_PAUSE' : 'VIDEO_PLAY' }),
+  }).catch(() => {})
+}
+
+export function isVideoPaused() {
+  return videoPausedByUser
+}
+
 interface MediaRendererProps {
   scene: Scene
   className?: string
@@ -147,7 +173,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
 
     const forcePlay = () => {
       if (!videoRef.current) return
-      if (videoRef.current.paused && !videoRef.current.ended && shouldAutoPlay) {
+      if (videoRef.current.paused && !videoRef.current.ended && shouldAutoPlay && !videoPausedByUser) {
         videoRef.current.play().catch(() => {})
       }
     }
@@ -173,7 +199,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
 
     // Intercept the 'pause' event
     const handleVideoPause = () => {
-      if (shouldAutoPlay && !videoRef.current?.ended) {
+      if (shouldAutoPlay && !videoRef.current?.ended && !videoPausedByUser) {
         requestAnimationFrame(forcePlay)
       }
     }
@@ -191,10 +217,15 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
     }
   }, [keepAlive, scene.type, shouldAutoPlay])
 
-  // For preview: show video thumbnail instead of playing video
-  if (scene.type === 'video' && isPreview && scene.thumbnail) {
-    return (
-      <div className={`relative w-full h-full ${className}`}>
+  // ALL hooks must be called before any conditional returns
+  // Determine if we should use preview mode rendering
+  const isVideoPreview = scene.type === 'video' && isPreview && !!scene.thumbnail
+  const isWebPreview = scene.type === 'web' && isPreview
+
+  const renderContent = useMemo(() => {
+    // Preview: show video thumbnail instead of playing video
+    if (scene.type === 'video' && isPreview && scene.thumbnail) {
+      return (
         <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden">
           <img
             src={scene.thumbnail}
@@ -211,11 +242,24 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
             </div>
           </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
-  const renderContent = useMemo(() => {
+    // Preview: render interactive iframe for web type
+    if (scene.type === 'web' && isPreview) {
+      return (
+        <div className="w-full h-full bg-white overflow-hidden">
+          <iframe
+            src={scene.url}
+            className="w-full h-full border-0"
+            title={scene.name}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            loading="eager"
+          />
+        </div>
+      )
+    }
+
     switch (scene.type) {
       case 'image':
         return (
@@ -313,14 +357,19 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
           </div>
         )
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [scene.id, scene.type, scene.src, scene.url, scene.content, scene.fontSize, scene.fontColor, scene.bgColor, scene.textAlign, scene.name, shouldAutoPlay, videoMuted, isPreview, scene.thumbnail])
 
-  return <div className={`relative w-full h-full ${className}`}>{renderContent}</div>
+  return (
+    <div className={`relative w-full h-full ${className}`}>
+      {renderContent}
+    </div>
+  )
 })
 
 /**
  * TransitionRenderer - Optimized cross-transition with GPU compositing
+ * Now supports per-slide transition overrides via scene.sceneTransitionType
  */
 interface TransitionRendererProps {
   scene: Scene | undefined
@@ -346,6 +395,10 @@ export const TransitionRenderer = memo(function TransitionRenderer({
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Determine effective transition: per-slide overrides global
+  const effectiveTransitionType = scene?.sceneTransitionType || transitionType
+  const effectiveTransitionDuration = scene?.sceneTransitionDuration || transitionDuration
+
   // Preload next scene for instant switching
   useEffect(() => {
     const scenes = usePresentationStore.getState().scenes
@@ -364,7 +417,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
       const oldScene = usePresentationStore.getState().scenes.find(
         (s) => s.id === prevSceneIdRef.current
       )
-      if (oldScene && transitionType !== 'none') {
+      if (oldScene && effectiveTransitionType !== 'none') {
         setPrevScene(oldScene)
         setIsTransitioning(true)
 
@@ -372,12 +425,12 @@ export const TransitionRenderer = memo(function TransitionRenderer({
         timeoutRef.current = setTimeout(() => {
           setPrevScene(undefined)
           setIsTransitioning(false)
-        }, transitionDuration + 50)
+        }, effectiveTransitionDuration + 50)
       }
     }
 
     prevSceneIdRef.current = newId
-  }, [scene?.id, transitionType, transitionDuration])
+  }, [scene?.id, effectiveTransitionType, effectiveTransitionDuration])
 
   useEffect(() => {
     return () => {
@@ -389,7 +442,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
     return <div className={`w-full h-full ${className}`} />
   }
 
-  if (transitionType === 'none' || !isTransitioning) {
+  if (effectiveTransitionType === 'none' || !isTransitioning) {
     return (
       <div className={`w-full h-full overflow-hidden ${className}`} style={{ willChange: 'contents' }}>
         <div key={scene.id} className="w-full h-full">
@@ -399,7 +452,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
     )
   }
 
-  const duration = `${transitionDuration}ms`
+  const duration = `${effectiveTransitionDuration}ms`
   const durationVar = { '--transition-duration': duration } as React.CSSProperties
 
   return (
@@ -410,7 +463,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
       {prevScene && (
         <div
           key={`exit-${prevScene.id}`}
-          className={`transition-${transitionType}-exit`}
+          className={`transition-${effectiveTransitionType}-exit`}
           style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
         >
           <MediaRenderer scene={prevScene} isActive={false} keepAlive={keepAlive} isPreview={isPreview} />
@@ -418,7 +471,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
       )}
       <div
         key={`enter-${scene.id}`}
-        className={`transition-${transitionType}-enter`}
+        className={`transition-${effectiveTransitionType}-enter`}
         style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
       >
         <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} isPreview={isPreview} />
@@ -432,6 +485,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
  * Supports both:
  * - LOCAL: postMessage to popup window (same device, dual monitor)
  * - REMOTE: POST to /api/sync for cross-device (SSE to output page)
+ * Now includes per-slide transition overrides
  */
 export function OutputSync() {
   const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration, videoVolume, videoMuted } = usePresentationStore()
@@ -445,8 +499,9 @@ export function OutputSync() {
       type: 'scene' as const,
       scene: currentScene,
       overlays: textOverlays,
-      transitionType,
-      transitionDuration,
+      // Per-slide transition: scene can override global
+      transitionType: currentScene.sceneTransitionType || transitionType,
+      transitionDuration: currentScene.sceneTransitionDuration || transitionDuration,
       videoVolume,
       videoMuted,
     }

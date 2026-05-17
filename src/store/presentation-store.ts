@@ -95,6 +95,8 @@ export interface Scene {
   textAlign?: 'left' | 'center' | 'right'
   /** Groups PPTX slides from the same file */
   pptxFileId?: string
+  /** Original PPTX filename for grouping in scene list */
+  pptxFileName?: string
   slideIndex?: number
   thumbnail?: string
   duration?: number
@@ -103,6 +105,10 @@ export interface Scene {
   trimStart?: number
   /** Video trim end time in seconds */
   trimEnd?: number
+  /** Per-slide transition override (falls back to global) */
+  sceneTransitionType?: TransitionType
+  /** Per-slide transition duration override */
+  sceneTransitionDuration?: number
 }
 
 export interface TextOverlay {

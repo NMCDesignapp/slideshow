@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef, useCallback, memo } from 'react'
+import React, { useEffect, useState, useRef, useCallback, memo, useMemo } from 'react'
 import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 import { MediaRenderer } from '@/components/presentation/media-renderer'
 
@@ -47,6 +47,7 @@ function stopOutputAudioKeepAlive() {
 
 /**
  * Optimized overlay renderer
+ * Supports scrolling text overlay type
  */
 const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: TextOverlay[] }) {
   const visibleOverlays = overlays.filter((o) => o.visible)
@@ -84,15 +85,28 @@ const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: 
   )
 })
 
+// Aspect ratio options for output display
+const ASPECT_RATIOS = [
+  { label: '16:9', value: '16:9', widthRatio: 16, heightRatio: 9 },
+  { label: '4:3', value: '4:3', widthRatio: 4, heightRatio: 3 },
+]
+
 export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const [connectionMode, setConnectionMode] = useState<'local' | 'remote' | 'unknown'>('unknown')
   const [connected, setConnected] = useState(false)
+  const [videoPaused, setVideoPaused] = useState(false)
+  const [aspectRatio, setAspectRatio] = useState<string>('16:9')
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Compute connection mode from window.opener - no setState needed in effects
+  const connectionMode = useMemo(() => {
+    if (typeof window === 'undefined') return 'unknown'
+    return window.opener ? 'local' : 'remote'
+  }, [])
 
   const handleFullscreen = useCallback(() => {
     if (containerRef.current && !document.fullscreenElement) {
@@ -116,6 +130,7 @@ export default function OutputPage() {
     startOutputAudioKeepAlive()
 
     const forceAllVideosPlay = () => {
+      if (videoPaused) return // Don't force play if user paused
       const videos = document.querySelectorAll('video')
       videos.forEach((v) => {
         if (v.paused && !v.ended) {
@@ -146,6 +161,7 @@ export default function OutputPage() {
     }
 
     const handleVideoPauseGlobal = (e: Event) => {
+      if (videoPaused) return // Don't auto-resume if user paused
       const video = e.target as HTMLVideoElement
       if (video && !video.ended) {
         requestAnimationFrame(() => {
@@ -188,7 +204,7 @@ export default function OutputPage() {
       })
       if (wakeLock) wakeLock.release?.()
     }
-  }, [])
+  }, [videoPaused])
 
   // === STATE UPDATE HANDLER (shared by both local and remote) ===
   const handleStateUpdate = useCallback((payload: OutputState) => {
@@ -211,16 +227,25 @@ export default function OutputPage() {
 
     prevSceneIdRef.current = newId
     setState(payload)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.scene])
 
   // === MODE 1: LOCAL (postMessage from opener window) ===
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'PRESENTATION_UPDATE') {
-        setConnectionMode('local')
         setConnected(true)
         handleStateUpdate(event.data.payload as OutputState)
+      }
+      // Handle video pause/play messages
+      if (event.data?.type === 'VIDEO_PAUSE') {
+        setVideoPaused(true)
+        document.querySelectorAll('video').forEach((v) => v.pause())
+      }
+      if (event.data?.type === 'VIDEO_PLAY') {
+        setVideoPaused(false)
+        document.querySelectorAll('video').forEach((v) => {
+          v.play().catch(() => {})
+        })
       }
     }
 
@@ -229,7 +254,6 @@ export default function OutputPage() {
     // Signal opener that we're ready
     if (window.opener) {
       window.opener.postMessage({ type: 'OUTPUT_READY' }, '*')
-      setConnectionMode('local')
     }
 
     return () => {
@@ -241,8 +265,6 @@ export default function OutputPage() {
   useEffect(() => {
     // Only try SSE if not opened as a popup (no window.opener)
     if (window.opener) return
-
-    setConnectionMode('remote')
 
     let eventSource: EventSource | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -258,6 +280,19 @@ export default function OutputPage() {
         eventSource.onmessage = (event) => {
           try {
             const payload = JSON.parse(event.data) as OutputState
+            // Check if it's a video control message
+            if (payload.type === 'VIDEO_PAUSE') {
+              setVideoPaused(true)
+              document.querySelectorAll('video').forEach((v) => v.pause())
+              return
+            }
+            if (payload.type === 'VIDEO_PLAY') {
+              setVideoPaused(false)
+              document.querySelectorAll('video').forEach((v) => {
+                v.play().catch(() => {})
+              })
+              return
+            }
             handleStateUpdate(payload)
           } catch { /* ignore parse errors */ }
         }
@@ -282,10 +317,14 @@ export default function OutputPage() {
     }
   }, [handleStateUpdate])
 
+  // Per-slide transition: use the transition from payload (already resolved)
   const transitionType = state.transitionType || 'none'
   const transitionDuration = state.transitionDuration || DEFAULT_TRANSITION_DURATION
   const duration = `${transitionDuration}ms`
   const durationVar = { '--transition-duration': duration } as React.CSSProperties
+
+  // Calculate aspect ratio container
+  const selectedRatio = ASPECT_RATIOS.find(r => r.value === aspectRatio) || ASPECT_RATIOS[0]
 
   const renderScene = () => {
     if (state.type === 'black') {
@@ -343,7 +382,7 @@ export default function OutputPage() {
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 bg-black cursor-none"
+      className="fixed inset-0 bg-black cursor-none group"
       style={{
         transform: 'translateZ(0)',
         backfaceVisibility: 'hidden',
@@ -351,8 +390,40 @@ export default function OutputPage() {
       onClick={handleFullscreen}
       onDoubleClick={() => document.exitFullscreen?.()}
     >
-      {renderScene()}
-      {state.overlays && <OverlayRenderer overlays={state.overlays} />}
+      {/* Aspect ratio container - centers content within the full screen */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="relative w-full h-full"
+          style={{
+            aspectRatio: `${selectedRatio.widthRatio} / ${selectedRatio.heightRatio}`,
+            maxWidth: aspectRatio === '4:3' ? `${(selectedRatio.widthRatio / selectedRatio.heightRatio) * 100}vh` : undefined,
+            maxHeight: aspectRatio === '4:3' ? '100%' : undefined,
+          }}
+        >
+          {renderScene()}
+          {state.overlays && <OverlayRenderer overlays={state.overlays} />}
+        </div>
+      </div>
+
+      {/* Aspect ratio buttons - top-left, appear on hover */}
+      <div className="absolute top-3 left-3 z-50 opacity-0 group-hover:opacity-70 transition-opacity duration-300 flex gap-1">
+        {ASPECT_RATIOS.map((ratio) => (
+          <button
+            key={ratio.value}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAspectRatio(ratio.value)
+            }}
+            className={`px-2 py-1 rounded text-[10px] font-mono transition-colors ${
+              aspectRatio === ratio.value
+                ? 'bg-white/20 text-white'
+                : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/60'
+            }`}
+          >
+            {ratio.label}
+          </button>
+        ))}
+      </div>
 
       {/* Connection status indicator - subtle, top right */}
       {connectionMode === 'remote' && (

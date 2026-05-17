@@ -146,6 +146,7 @@ export function AddSceneDialog() {
                 src: dataUrl,
                 slideIndex: slide.index,
                 pptxFileId,
+                pptxFileName: file.name,
               })
             }
             toast.success(`Đã trích xuất ${slides.length} slide từ "${file.name}"`)

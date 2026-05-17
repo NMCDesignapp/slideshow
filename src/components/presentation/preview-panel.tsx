@@ -21,6 +21,12 @@ import {
   Monitor,
   MonitorOff,
   X,
+  ChevronLeft,
+  ChevronRight,
+  Square,
+  Play,
+  Pause,
+  Radio,
 } from 'lucide-react'
 
 /** Sortable filmstrip item for PPTX slides */
@@ -103,6 +109,11 @@ export function PreviewPanel() {
     setCurrentSceneIndex,
     removeScene,
     reorderScenes,
+    goNext,
+    goPrev,
+    toggleBlackScreen,
+    goLive,
+    stopLive,
     screenSize,
   } = usePresentationStore() as any
 
@@ -170,7 +181,7 @@ export function PreviewPanel() {
         </div>
       )}
 
-      {/* LEFT - "Tiếp theo" (Next) preview */}
+      {/* LEFT - "Tiếp theo" (Next) preview - EQUAL size */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
           <div className="w-2 h-2 rounded-full bg-zinc-600" />
@@ -190,8 +201,67 @@ export function PreviewPanel() {
         </div>
       </div>
 
-      {/* RIGHT - Main preview (ĐANG CHIẾU) */}
-      <div className="flex-[2] flex flex-col min-w-0">
+      {/* CENTER - Navigation controls column */}
+      <div className="flex flex-col items-center justify-center gap-2 px-1 min-w-[44px]">
+        {/* Prev button */}
+        <button
+          onClick={goPrev}
+          disabled={currentSceneIndex <= 0}
+          className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        {/* Slide counter */}
+        <div className="text-[11px] font-mono text-zinc-400 tabular-nums text-center leading-tight">
+          <div className="text-emerald-400 font-bold text-sm">
+            {scenes.length > 0 ? currentSceneIndex + 1 : 0}
+          </div>
+          <div className="text-zinc-600">/</div>
+          <div>{scenes.length}</div>
+        </div>
+
+        {/* Next button */}
+        <button
+          onClick={goNext}
+          disabled={currentSceneIndex >= scenes.length - 1}
+          className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+
+        {/* Divider */}
+        <div className="w-6 h-px bg-zinc-700 my-0.5" />
+
+        {/* Black screen toggle */}
+        <button
+          onClick={toggleBlackScreen}
+          className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors ${
+            blackScreen
+              ? 'bg-red-600/20 border border-red-500/50 text-red-400'
+              : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700'
+          }`}
+          title={blackScreen ? 'Bật hình' : 'Màn hình đen'}
+        >
+          <Square className="w-4 h-4" />
+        </button>
+
+        {/* Live/Stop toggle */}
+        <button
+          onClick={isLive ? stopLive : goLive}
+          className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors ${
+            isLive
+              ? 'bg-emerald-600/20 border border-emerald-500/50 text-emerald-400'
+              : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-700'
+          }`}
+          title={isLive ? 'Dừng chiếu' : 'Bắt đầu chiếu'}
+        >
+          {isLive ? <Radio className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        </button>
+      </div>
+
+      {/* RIGHT - Main preview (ĐANG CHIẾU) - EQUAL size */}
+      <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
           <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} />
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -202,9 +272,6 @@ export function PreviewPanel() {
               LIVE
             </span>
           )}
-          <span className="text-[10px] text-zinc-600 ml-auto">
-            {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : ''}
-          </span>
         </div>
         <div className="flex-1 bg-black rounded-lg overflow-hidden border border-zinc-700 relative">
           {blackScreen ? (

@@ -117,7 +117,7 @@ export default function Home() {
         <div className="flex-1 min-h-0">
           <ResizablePanelGroup direction="vertical" className="h-full">
             {/* Preview area - top */}
-            <ResizablePanel defaultSize={50} minSize={25}>
+            <ResizablePanel defaultSize={55} minSize={25}>
               <div className="h-full p-2 pb-1">
                 <PreviewPanel />
               </div>
@@ -126,7 +126,7 @@ export default function Home() {
             <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
             {/* Bottom area - edit + controls, all integrated */}
-            <ResizablePanel defaultSize={50} minSize={25}>
+            <ResizablePanel defaultSize={45} minSize={25}>
               <div className="h-full flex flex-col">
                 {/* Edit panels - left: scene list, right: controls + overlays */}
                 <div className="flex-1 min-h-0 p-2 pt-1 pb-1">

@@ -271,6 +271,7 @@ export function SceneList() {
     usePresentationStore()
   const [isDragOver, setIsDragOver] = useState(false)
   const [expandedPptxGroups, setExpandedPptxGroups] = useState<Set<string>>(new Set())
+  const [isListExpanded, setIsListExpanded] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const sensors = useSensors(
@@ -283,7 +284,9 @@ export function SceneList() {
     if (over && active.id !== over.id) {
       const oldIndex = scenes.findIndex((s) => s.id === active.id)
       const newIndex = scenes.findIndex((s) => s.id === over.id)
-      reorderScenes(oldIndex, newIndex)
+      if (oldIndex !== -1 && newIndex !== -1) {
+        reorderScenes(oldIndex, newIndex)
+      }
     }
   }
 
@@ -473,9 +476,23 @@ export function SceneList() {
     }
   }
 
+  // Build visible scene IDs for SortableContext (only items that are actually rendered)
+  const visibleSceneIds: string[] = []
+  for (const item of renderedItems) {
+    if (item.type === 'scene' && item.scene) {
+      visibleSceneIds.push(item.scene.id)
+    } else if (item.type === 'pptx-group' && item.groupId) {
+      if (expandedPptxGroups.has(item.groupId) && item.groupSlides) {
+        for (const slide of item.groupSlides) {
+          visibleSceneIds.push(slide.id)
+        }
+      }
+    }
+  }
+
   return (
     <div
-      className="flex flex-col h-full relative"
+      className="flex flex-col h-full overflow-hidden relative"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -491,11 +508,27 @@ export function SceneList() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-          Danh sách
-        </h3>
-        <div className="flex items-center gap-1">
+      {/* Collapsible header */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <button
+          onClick={() => setIsListExpanded(!isListExpanded)}
+          className="flex items-center gap-1.5 flex-1 min-w-0 hover:bg-zinc-800/50 rounded px-1 py-0.5 transition-colors"
+        >
+          {isListExpanded ? (
+            <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
+          ) : (
+            <ChevronRightIcon className="w-3 h-3 text-zinc-500 flex-shrink-0" />
+          )}
+          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            Danh sách
+          </h3>
+          {scenes.length > 0 && (
+            <span className="text-[9px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded-full">
+              {scenes.length} mục
+            </span>
+          )}
+        </button>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           {/* Clear all button */}
           {scenes.length > 0 && (
             <Tooltip>
@@ -547,75 +580,80 @@ export function SceneList() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        {scenes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
-            <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
-            <p className="text-xs">Chưa có thành phần nào</p>
-            <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
-          </div>
-        ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={scenes.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-0.5">
-                {renderedItems.map((item) => {
-                  if (item.type === 'pptx-group' && item.groupId) {
-                    const isExpanded = expandedPptxGroups.has(item.groupId)
-                    return (
-                      <div key={`group-${item.groupId}`}>
-                        <PptxGroupItem
-                          fileName={item.groupFileName || 'PPTX'}
-                          slideCount={item.groupSlides?.length || 0}
-                          isExpanded={isExpanded}
-                          onToggle={() => togglePptxGroup(item.groupId!)}
-                          onDeleteGroup={() => deletePptxGroup(item.groupId!)}
-                          groupId={item.groupId}
+      {/* Collapsible content */}
+      {isListExpanded ? (
+        <ScrollArea className="flex-1 min-h-0">
+          {scenes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
+              <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
+              <p className="text-xs">Chưa có thành phần nào</p>
+              <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
+            </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={visibleSceneIds} strategy={verticalListSortingStrategy}>
+                <div className="space-y-0.5">
+                  {renderedItems.map((item) => {
+                    if (item.type === 'pptx-group' && item.groupId) {
+                      const isExpanded = expandedPptxGroups.has(item.groupId)
+                      return (
+                        <div key={`group-${item.groupId}`}>
+                          <PptxGroupItem
+                            fileName={item.groupFileName || 'PPTX'}
+                            slideCount={item.groupSlides?.length || 0}
+                            isExpanded={isExpanded}
+                            onToggle={() => togglePptxGroup(item.groupId!)}
+                            onDeleteGroup={() => deletePptxGroup(item.groupId!)}
+                            groupId={item.groupId}
+                          />
+                          {isExpanded && item.groupSlides && (
+                            <div className="ml-4 mt-0.5 space-y-0.5">
+                              {item.groupSlides.map((slide) => {
+                                const globalIdx = scenes.findIndex((s) => s.id === slide.id)
+                                return (
+                                  <SortableSceneItem
+                                    key={slide.id}
+                                    scene={slide}
+                                    isActive={globalIdx === currentSceneIndex}
+                                    onClick={() => setCurrentSceneIndex(globalIdx)}
+                                    onDelete={() => {
+                                      removeScene(slide.id)
+                                      toast.success(`Đã xoá "${slide.name}"`)
+                                    }}
+                                  />
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    if (item.type === 'scene' && item.scene) {
+                      return (
+                        <SortableSceneItem
+                          key={item.scene.id}
+                          scene={item.scene}
+                          isActive={item.index === currentSceneIndex}
+                          onClick={() => setCurrentSceneIndex(item.index)}
+                          onDelete={() => {
+                            removeScene(item.scene!.id)
+                            toast.success(`Đã xoá "${item.scene!.name}"`)
+                          }}
                         />
-                        {isExpanded && item.groupSlides && (
-                          <div className="ml-4 mt-0.5 space-y-0.5">
-                            {item.groupSlides.map((slide) => {
-                              const globalIdx = scenes.findIndex((s) => s.id === slide.id)
-                              return (
-                                <SortableSceneItem
-                                  key={slide.id}
-                                  scene={slide}
-                                  isActive={globalIdx === currentSceneIndex}
-                                  onClick={() => setCurrentSceneIndex(globalIdx)}
-                                  onDelete={() => {
-                                    removeScene(slide.id)
-                                    toast.success(`Đã xoá "${slide.name}"`)
-                                  }}
-                                />
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  }
+                      )
+                    }
 
-                  if (item.type === 'scene' && item.scene) {
-                    return (
-                      <SortableSceneItem
-                        key={item.scene.id}
-                        scene={item.scene}
-                        isActive={item.index === currentSceneIndex}
-                        onClick={() => setCurrentSceneIndex(item.index)}
-                        onDelete={() => {
-                          removeScene(item.scene!.id)
-                          toast.success(`Đã xoá "${item.scene!.name}"`)
-                        }}
-                      />
-                    )
-                  }
-
-                  return null
-                })}
-              </div>
-            </SortableContext>
-          </DndContext>
-        )}
-      </ScrollArea>
+                    return null
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </ScrollArea>
+      ) : (
+        <div className="flex-1 min-h-0" />
+      )}
     </div>
   )
 }

@@ -14,23 +14,70 @@ export type TransitionType =
   | 'dissolve'
   | 'wipe-left'
   | 'wipe-right'
+  | 'wipe-up'
+  | 'wipe-down'
   | 'flip'
+  | 'flip-x'
   | 'rotate'
+  | 'spin'
+  | 'blur'
+  | 'curtain-left'
+  | 'curtain-right'
+  | 'split-h'
+  | 'split-v'
+  | 'bounce'
+  | 'elastic'
+  | 'glitch'
 
-export const TRANSITION_OPTIONS: { value: TransitionType; label: string; description: string }[] = [
-  { value: 'none', label: 'Không', description: 'Chuyển ngay lập tức' },
-  { value: 'fade', label: 'Fade', description: 'Mờ dần / xuất hiện dần' },
-  { value: 'dissolve', label: 'Dissolve', description: 'Hoà tan chéo' },
-  { value: 'slide-left', label: 'Trượt trái', description: 'Trượt từ phải sang trái' },
-  { value: 'slide-right', label: 'Trượt phải', description: 'Trượt từ trái sang phải' },
-  { value: 'slide-up', label: 'Trượt lên', description: 'Trượt từ dưới lên trên' },
-  { value: 'slide-down', label: 'Trượt xuống', description: 'Trượt từ trên xuống dưới' },
-  { value: 'zoom-in', label: 'Phóng to', description: 'Phóng to từ trung tâm' },
-  { value: 'zoom-out', label: 'Thu nhỏ', description: 'Thu nhỏ vào trung tâm' },
-  { value: 'wipe-left', label: 'Wipe trái', description: 'Kéo che từ phải sang trái' },
-  { value: 'wipe-right', label: 'Wipe phải', description: 'Kéo che từ trái sang phải' },
-  { value: 'flip', label: 'Lật', description: 'Lật 3D quanh trục Y' },
-  { value: 'rotate', label: 'Xoay', description: 'Xoay chuyển cảnh' },
+export interface TransitionOption {
+  value: TransitionType
+  label: string
+  description: string
+  icon: string
+  group: 'basic' | 'slide' | 'zoom' | 'wipe' | '3d' | 'special'
+}
+
+export const TRANSITION_GROUPS: { key: TransitionOption['group']; label: string }[] = [
+  { key: 'basic', label: 'Cơ bản' },
+  { key: 'slide', label: 'Trượt' },
+  { key: 'zoom', label: 'Phóng/Thu' },
+  { key: 'wipe', label: 'Wipe' },
+  { key: '3d', label: '3D' },
+  { key: 'special', label: 'Đặc biệt' },
+]
+
+export const TRANSITION_OPTIONS: TransitionOption[] = [
+  // Basic
+  { value: 'none', label: 'Không', description: 'Chuyển ngay lập tức', icon: '⏭️', group: 'basic' },
+  { value: 'fade', label: 'Fade', description: 'Mờ dần / Xuất hiện dần', icon: '🌫️', group: 'basic' },
+  { value: 'dissolve', label: 'Dissolve', description: 'Hoà tan chéo', icon: '💧', group: 'basic' },
+  { value: 'blur', label: 'Blur', description: 'Mờ nhân rồi sắc lại', icon: '🔮', group: 'basic' },
+  // Slide
+  { value: 'slide-left', label: 'Trượt trái', description: 'Từ phải sang trái', icon: '⬅️', group: 'slide' },
+  { value: 'slide-right', label: 'Trượt phải', description: 'Từ trái sang phải', icon: '➡️', group: 'slide' },
+  { value: 'slide-up', label: 'Trượt lên', description: 'Từ dưới lên trên', icon: '⬆️', group: 'slide' },
+  { value: 'slide-down', label: 'Trượt xuống', description: 'Từ trên xuống dưới', icon: '⬇️', group: 'slide' },
+  // Zoom
+  { value: 'zoom-in', label: 'Phóng to', description: 'Phóng to từ trung tâm', icon: '🔍', group: 'zoom' },
+  { value: 'zoom-out', label: 'Thu nhỏ', description: 'Thu nhỏ vào trung tâm', icon: '🎯', group: 'zoom' },
+  { value: 'elastic', label: 'Elastic', description: 'Co giãn đàn hồi', icon: '🧲', group: 'zoom' },
+  { value: 'bounce', label: 'Bounce', description: 'Nảy vào', icon: '🏀', group: 'zoom' },
+  // Wipe
+  { value: 'wipe-left', label: 'Wipe trái', description: 'Kéo che từ phải sang trái', icon: '🧹', group: 'wipe' },
+  { value: 'wipe-right', label: 'Wipe phải', description: 'Kéo che từ trái sang phải', icon: '🧹', group: 'wipe' },
+  { value: 'wipe-up', label: 'Wipe lên', description: 'Kéo che từ dưới lên', icon: '⬆️', group: 'wipe' },
+  { value: 'wipe-down', label: 'Wipe xuống', description: 'Kéo che từ trên xuống', icon: '⬇️', group: 'wipe' },
+  { value: 'curtain-left', label: 'Rèm trái', description: 'Rèm kéo từ phải sang trái', icon: '🎭', group: 'wipe' },
+  { value: 'curtain-right', label: 'Rèm phải', description: 'Rèm kéo từ trái sang phải', icon: '🎭', group: 'wipe' },
+  { value: 'split-h', label: 'Tách ngang', description: 'Tách đôi theo chiều ngang', icon: '↔️', group: 'wipe' },
+  { value: 'split-v', label: 'Tách dọc', description: 'Tách đôi theo chiều dọc', icon: '↕️', group: 'wipe' },
+  // 3D
+  { value: 'flip', label: 'Lật Y', description: 'Lật 3D quanh trục Y', icon: '🔄', group: '3d' },
+  { value: 'flip-x', label: 'Lật X', description: 'Lật 3D quanh trục X', icon: '🔃', group: '3d' },
+  { value: 'rotate', label: 'Xoay', description: 'Xoay chuyển cảnh', icon: '🌀', group: '3d' },
+  { value: 'spin', label: 'Spin', description: 'Xoay 360°', icon: '💫', group: '3d' },
+  // Special
+  { value: 'glitch', label: 'Glitch', description: 'Hiệu ứng nhiễu kỹ thuật số', icon: '⚡', group: 'special' },
 ]
 
 export const DEFAULT_TRANSITION_DURATION = 600 // ms

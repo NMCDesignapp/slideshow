@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { usePresentationStore, TRANSITION_OPTIONS, TransitionType } from '@/store/presentation-store'
+import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType } from '@/store/presentation-store'
 import { TransitionRenderer, MediaRenderer } from './media-renderer'
 import {
   Monitor,
@@ -18,7 +18,9 @@ import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -71,9 +73,7 @@ export function PreviewPanel() {
       ])
       presentationRequest
         .start()
-        .then((connection: any) => {
-          // Connection established
-        })
+        .then(() => {})
         .catch(() => {
           fallbackOpenWindow()
         })
@@ -153,21 +153,33 @@ export function PreviewPanel() {
         {/* Separator */}
         <div className="w-px h-5 bg-zinc-700 mx-1" />
 
-        {/* Transition selector */}
+        {/* Transition selector with groups */}
         <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
           <Select value={transitionType} onValueChange={(v) => setTransitionType(v as TransitionType)}>
-            <SelectTrigger className="h-7 w-[130px] bg-zinc-800 border-zinc-700 text-zinc-300 text-xs">
+            <SelectTrigger className="h-7 w-[140px] bg-zinc-800 border-zinc-700 text-zinc-300 text-xs">
               <SelectValue placeholder="Hiệu ứng" />
             </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[300px]">
-              {TRANSITION_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-zinc-300 text-xs focus:bg-zinc-700 focus:text-white">
-                  <div>
-                    <span>{opt.label}</span>
-                    <span className="text-zinc-500 ml-1">– {opt.description}</span>
-                  </div>
-                </SelectItem>
+            <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[320px] overflow-y-auto">
+              {TRANSITION_GROUPS.map((group) => (
+                <SelectGroup key={group.key}>
+                  <SelectLabel className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-2">
+                    {group.label}
+                  </SelectLabel>
+                  {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
+                    <SelectItem
+                      key={opt.value}
+                      value={opt.value}
+                      className="text-zinc-300 text-xs focus:bg-zinc-700 focus:text-white"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{opt.icon}</span>
+                        <span>{opt.label}</span>
+                        <span className="text-zinc-600 text-[10px]">– {opt.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
             </SelectContent>
           </Select>
@@ -177,7 +189,7 @@ export function PreviewPanel() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex items-center gap-1.5 bg-zinc-800 rounded-md px-2 h-7">
-                  <Clock className="w-3 h-3 text-zinc-500" />
+                  <Clock className="w-3 h-3 text-zinc-500 flex-shrink-0" />
                   <Slider
                     value={[transitionDuration]}
                     onValueChange={([v]) => setTransitionDuration(v)}
@@ -231,10 +243,10 @@ export function PreviewPanel() {
         </Button>
       </div>
 
-      {/* Dual preview - "Tiếp theo" bên trái, "Đang chiếu" bên phải */}
+      {/* Dual preview - "Tiếp theo" bên TRÁI, "Đang chiếu" bên PHẢI */}
       <div className="flex gap-3 flex-1 min-h-0">
-        {/* Next preview - LEFT */}
-        <div className="flex-[1.5] flex flex-col min-w-0">
+        {/* Next preview - LEFT (nhỏ hơn) */}
+        <div className="flex-[1.2] flex flex-col min-w-0">
           <div className="flex items-center gap-2 mb-1.5">
             <div className="w-2 h-2 rounded-full bg-zinc-600" />
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tiếp theo</span>
@@ -253,7 +265,7 @@ export function PreviewPanel() {
           </div>
         </div>
 
-        {/* Main preview - Current (ĐANG CHIẾU) - RIGHT */}
+        {/* Main preview - Current (ĐANG CHIẾU) - RIGHT (lớn hơn) */}
         <div className="flex-[3] flex flex-col min-w-0">
           <div className="flex items-center gap-2 mb-1.5">
             <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} />

@@ -104,29 +104,12 @@ export function MediaRenderer({ scene, className = '', isActive = true }: MediaR
 }
 
 /**
- * Get the CSS animation class for a given transition type and phase.
- */
-function getTransitionClass(type: TransitionType, phase: 'enter' | 'exit'): string {
-  if (type === 'none') return ''
-  return `transition-${type}-${phase}`
-}
-
-/**
- * Get the inline animation style for a given transition duration.
- */
-function getTransitionStyle(duration: number): React.CSSProperties {
-  return {
-    '--transition-duration': `${duration}ms`,
-    animationDuration: `${duration}ms`,
-  } as React.CSSProperties
-}
-
-/**
- * TransitionRenderer - wraps scene changes with CSS animation transitions.
+ * TransitionRenderer - cross-transition that shows both old and new scene simultaneously.
  *
- * Strategy: Render the current scene with an "enter" animation.
- * To show the outgoing scene during transition, we subscribe to the store
- * and keep a snapshot of the previous scene that clears after animation duration.
+ * When the scene changes:
+ * 1. Keep the OLD scene rendered with an "exit" animation
+ * 2. Render the NEW scene on top with an "enter" animation
+ * 3. After the transition duration, remove the old scene
  */
 interface TransitionRendererProps {
   scene: Scene | undefined
@@ -143,30 +126,84 @@ export function TransitionRenderer({
   className = '',
   isActive = true,
 }: TransitionRendererProps) {
+  // Track previous scene for cross-transition
+  const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
+  const [isTransitioning, setIsTransitioning] = useState(false)
+  const prevSceneIdRef = useRef<string | undefined>(undefined)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Detect scene change
+  useEffect(() => {
+    const newId = scene?.id
+
+    if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && scene) {
+      // Scene changed → start transition
+      // Find the old scene from the store
+      const oldScene = usePresentationStore.getState().scenes.find(
+        (s) => s.id === prevSceneIdRef.current
+      )
+      if (oldScene && transitionType !== 'none') {
+        setPrevScene(oldScene)
+        setIsTransitioning(true)
+
+        // Clear after transition
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        timeoutRef.current = setTimeout(() => {
+          setPrevScene(undefined)
+          setIsTransitioning(false)
+        }, transitionDuration + 50) // small buffer
+      }
+    }
+
+    prevSceneIdRef.current = newId
+  }, [scene?.id, transitionType, transitionDuration])
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
   if (!scene) {
     return <div className={`w-full h-full ${className}`} />
   }
 
-  // No transition - just render directly with key for React to track
-  if (transitionType === 'none') {
+  // No transition
+  if (transitionType === 'none' || !isTransitioning) {
     return (
-      <div className={`w-full h-full ${className}`}>
-        <MediaRenderer scene={scene} isActive={isActive} />
+      <div className={`w-full h-full overflow-hidden ${className}`}>
+        <div
+          key={scene.id}
+          className="w-full h-full"
+        >
+          <MediaRenderer scene={scene} isActive={isActive} />
+        </div>
       </div>
     )
   }
 
-  // With transition - render with enter animation class and key
-  // The key change causes React to re-mount, triggering the CSS animation
-  const enterClass = getTransitionClass(transitionType, 'enter')
-  const style = getTransitionStyle(transitionDuration)
+  // Cross-transition: old scene exits + new scene enters
+  const duration = `${transitionDuration}ms`
+  const durationVar = { '--transition-duration': duration } as React.CSSProperties
 
   return (
-    <div className={`w-full h-full overflow-hidden ${className}`}>
+    <div className={`w-full h-full overflow-hidden transition-container ${className}`} style={durationVar}>
+      {/* OLD scene - exit animation (behind) */}
+      {prevScene && (
+        <div
+          key={`exit-${prevScene.id}`}
+          className={`transition-${transitionType}-exit`}
+          style={{ animationDuration: duration, ...durationVar }}
+        >
+          <MediaRenderer scene={prevScene} isActive={false} />
+        </div>
+      )}
+      {/* NEW scene - enter animation (on top) */}
       <div
-        key={scene.id}
-        className={`w-full h-full ${enterClass}`}
-        style={style}
+        key={`enter-${scene.id}`}
+        className={`transition-${transitionType}-enter`}
+        style={{ animationDuration: duration, ...durationVar }}
       >
         <MediaRenderer scene={scene} isActive={isActive} />
       </div>

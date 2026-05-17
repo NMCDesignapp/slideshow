@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
+import React, { useEffect, useState, useRef } from 'react'
+import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION, usePresentationStore } from '@/store/presentation-store'
 import { MediaRenderer } from '@/components/presentation/media-renderer'
 
 interface OutputState {
@@ -12,17 +12,13 @@ interface OutputState {
   transitionDuration?: number
 }
 
-/**
- * Get the CSS animation class for a given transition type and phase.
- */
-function getTransitionClass(type: TransitionType, phase: 'enter' | 'exit'): string {
-  if (type === 'none') return ''
-  return `transition-${type}-${phase}`
-}
-
 export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
+  const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
+  const [isTransitioning, setIsTransitioning] = useState(false)
+  const prevSceneIdRef = useRef<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleFullscreen = () => {
     if (containerRef.current) {
@@ -33,7 +29,27 @@ export default function OutputPage() {
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'PRESENTATION_UPDATE') {
-        setState(event.data.payload)
+        const payload = event.data.payload as OutputState
+        const newId = payload.scene?.id
+
+        // Detect scene change for cross-transition
+        if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && payload.scene) {
+          const tType = payload.transitionType || 'none'
+          if (tType !== 'none' && prevSceneIdRef.current) {
+            // Keep the old scene temporarily
+            setPrevScene(state.scene)
+            setIsTransitioning(true)
+
+            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+            timeoutRef.current = setTimeout(() => {
+              setPrevScene(undefined)
+              setIsTransitioning(false)
+            }, (payload.transitionDuration || DEFAULT_TRANSITION_DURATION) + 50)
+          }
+        }
+
+        prevSceneIdRef.current = newId
+        setState(payload)
       }
     }
 
@@ -43,15 +59,20 @@ export default function OutputPage() {
       window.opener.postMessage({ type: 'OUTPUT_READY' }, '*')
     }
 
-    return () => window.removeEventListener('message', handler)
-  }, [])
+    return () => {
+      window.removeEventListener('message', handler)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [state.scene])
 
   const transitionType = state.transitionType || 'none'
   const transitionDuration = state.transitionDuration || DEFAULT_TRANSITION_DURATION
+  const duration = `${transitionDuration}ms`
+  const durationVar = { '--transition-duration': duration } as React.CSSProperties
 
   const renderScene = () => {
     if (state.type === 'black') {
-      return <div className="absolute inset-0 bg-black" />
+      return <div className="absolute inset-0 bg-black z-10" />
     }
 
     if (state.type === 'empty' || !state.scene) {
@@ -65,7 +86,7 @@ export default function OutputPage() {
     const scene = state.scene
 
     // No transition - instant
-    if (transitionType === 'none') {
+    if (transitionType === 'none' || !isTransitioning) {
       return (
         <div className="absolute inset-0">
           <MediaRenderer scene={scene} isActive={true} />
@@ -73,19 +94,24 @@ export default function OutputPage() {
       )
     }
 
-    // With transition - use key to trigger CSS animation on scene change
-    const enterClass = getTransitionClass(transitionType, 'enter')
-    const style = {
-      '--transition-duration': `${transitionDuration}ms`,
-      animationDuration: `${transitionDuration}ms`,
-    } as React.CSSProperties
-
+    // Cross-transition: old scene exits + new scene enters
     return (
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden transition-container" style={durationVar}>
+        {/* OLD scene - exit animation (behind) */}
+        {prevScene && (
+          <div
+            key={`exit-${prevScene.id}`}
+            className={`transition-${transitionType}-exit`}
+            style={{ animationDuration: duration, ...durationVar }}
+          >
+            <MediaRenderer scene={prevScene} isActive={false} />
+          </div>
+        )}
+        {/* NEW scene - enter animation (on top) */}
         <div
-          key={scene.id}
-          className={`w-full h-full ${enterClass}`}
-          style={style}
+          key={`enter-${scene.id}`}
+          className={`transition-${transitionType}-enter`}
+          style={{ animationDuration: duration, ...durationVar }}
         >
           <MediaRenderer scene={scene} isActive={true} />
         </div>

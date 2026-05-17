@@ -27,3 +27,25 @@ Stage Summary:
 - Text notification overlays
 - Keyboard shortcuts for control
 - Dark theme optimized for presentation environments
+
+---
+Task ID: 2
+Agent: main
+Task: Add transition effects and swap preview positions
+
+Work Log:
+- Added 25 transition effects in 6 groups: Basic, Slide, Zoom, Wipe, 3D, Special
+- New effects: Blur, Elastic, Bounce, Wipe Up/Down, Curtain Left/Right, Split H/V, Flip X, Spin, Glitch
+- Upgraded TransitionRenderer to cross-transition (old scene exits + new scene enters simultaneously)
+- Swapped preview positions: "Đang chiếu" (LIVE) is now on the RIGHT, "Tiếp theo" is on the LEFT
+- Updated transition picker with grouped Select (SelectGroup + SelectLabel)
+- Each transition has icon, label, and description
+- Added all CSS animations for new transitions in globals.css
+- Updated Output page to support cross-transition with prevScene tracking
+- All animations use CSS `both` fill mode for proper enter/exit behavior
+
+Stage Summary:
+- 25 transition effects across 6 categories
+- Cross-transition: old + new scene visible during transition
+- Preview: "Đang chiếu" on RIGHT, "Tiếp theo" on LEFT
+- Grouped transition selector with icons and descriptions

@@ -34,6 +34,51 @@ import { toast } from 'sonner'
 
 type AddMode = 'image' | 'video' | 'web' | 'text' | 'pptx'
 
+// PPTX file counter for unique IDs
+let pptxCounter = 0
+
+// Generate thumbnail from video file
+function generateVideoThumbnail(videoSrc: string): Promise<string> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.crossOrigin = 'anonymous'
+    video.preload = 'metadata'
+    video.muted = true
+    video.playsInline = true
+
+    video.onloadeddata = () => {
+      video.currentTime = Math.min(1, video.duration * 0.1)
+    }
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = 192
+        canvas.height = 108
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+          resolve(dataUrl)
+        } else {
+          resolve('')
+        }
+      } catch {
+        resolve('')
+      }
+      video.src = ''
+      video.load()
+    }
+
+    video.onerror = () => {
+      resolve('')
+    }
+
+    video.src = videoSrc
+    video.load()
+  })
+}
+
 export function AddSceneDialog() {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<AddMode>('image')
@@ -92,7 +137,7 @@ export function AddSceneDialog() {
         if (mode === 'pptx') {
           try {
             const slides = await parsePptx(file)
-            const pptxFileId = `pptx-${Date.now()}-${file.name}`
+            const pptxFileId = `pptx-${++pptxCounter}-${file.name}`
             for (const slide of slides) {
               const dataUrl = svgToDataUrl(slide.svg)
               addScene({
@@ -117,10 +162,12 @@ export function AddSceneDialog() {
           })
         } else if (mode === 'video') {
           const url = URL.createObjectURL(file)
+          const thumbnail = await generateVideoThumbnail(url)
           addScene({
             type: 'video',
             name: file.name,
             src: url,
+            thumbnail: thumbnail || undefined,
           })
         }
       }

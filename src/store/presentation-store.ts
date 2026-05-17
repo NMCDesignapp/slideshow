@@ -99,6 +99,10 @@ export interface Scene {
   thumbnail?: string
   duration?: number
   order: number
+  /** Video trim start time in seconds */
+  trimStart?: number
+  /** Video trim end time in seconds */
+  trimEnd?: number
 }
 
 export interface TextOverlay {

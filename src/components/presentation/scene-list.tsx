@@ -49,23 +49,15 @@ import {
   Copy,
   ExternalLink,
   Trash,
+  Globe as GlobeIcon,
+  Power,
+  Scissors,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { AddSceneDialog } from './add-scene-dialog'
 import { toast } from 'sonner'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import {
   Select,
   SelectContent,
@@ -81,6 +73,52 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+
+// === VIDEO THUMBNAIL GENERATOR ===
+function generateVideoThumbnail(videoSrc: string): Promise<string> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.crossOrigin = 'anonymous'
+    video.preload = 'metadata'
+    video.muted = true
+    video.playsInline = true
+
+    video.onloadeddata = () => {
+      // Seek to 1 second or 10% of duration, whichever is smaller
+      video.currentTime = Math.min(1, video.duration * 0.1)
+    }
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = 192
+        canvas.height = 108
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+          resolve(dataUrl)
+        } else {
+          resolve('')
+        }
+      } catch {
+        resolve('')
+      }
+      video.src = ''
+      video.load()
+    }
+
+    video.onerror = () => {
+      resolve('')
+    }
+
+    video.src = videoSrc
+    video.load()
+  })
+}
+
+// PPTX file counter for unique IDs
+let pptxCounter = 0
 
 function SceneIcon({ type }: { type: Scene['type'] }) {
   switch (type) {
@@ -120,6 +158,9 @@ function SortableSceneItem({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  // Determine thumbnail to show
+  const thumbnailSrc = scene.thumbnail || (scene.type === 'pptx-slide' ? scene.src : undefined)
+
   return (
     <div
       ref={setNodeRef}
@@ -141,15 +182,18 @@ function SortableSceneItem({
       <SceneIcon type={scene.type} />
       <div className="flex-1 min-w-0">
         <p className="text-xs text-zinc-200 truncate">{scene.name}</p>
+        {/* Show trim info for video */}
+        {scene.type === 'video' && (scene.trimStart !== undefined || scene.trimEnd !== undefined) && (
+          <p className="text-[9px] text-zinc-500">
+            {scene.trimStart !== undefined ? `${scene.trimStart.toFixed(1)}s` : '0s'}
+            {' → '}
+            {scene.trimEnd !== undefined ? `${scene.trimEnd.toFixed(1)}s` : 'hết'}
+          </p>
+        )}
       </div>
-      {scene.type === 'image' && scene.thumbnail && (
-        <div className="w-7 h-5 rounded overflow-hidden flex-shrink-0">
-          <img src={scene.thumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
-        </div>
-      )}
-      {(scene.type === 'pptx-slide') && scene.src && (
+      {thumbnailSrc && (
         <div className="w-7 h-5 rounded overflow-hidden flex-shrink-0 bg-zinc-800">
-          <img src={scene.src} alt="Slide" className="w-full h-full object-cover" />
+          <img src={thumbnailSrc} alt="Thumbnail" className="w-full h-full object-cover" />
         </div>
       )}
       <button
@@ -185,6 +229,26 @@ export function SceneList() {
     }
   }
 
+  // === ADD VIDEO WITH THUMBNAIL ===
+  const addVideoScene = useCallback(async (file: File) => {
+    const url = URL.createObjectURL(file)
+    const thumbnail = await generateVideoThumbnail(url)
+    addScene({
+      type: 'video',
+      name: file.name,
+      src: url,
+      thumbnail: thumbnail || undefined,
+    })
+  }, [addScene])
+
+  const addVideoFromUrl = useCallback((url: string) => {
+    addScene({
+      type: 'video',
+      name: 'Video',
+      src: url,
+    })
+  }, [addScene])
+
   // === DRAG & DROP FILE SUPPORT ===
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -214,16 +278,11 @@ export function SceneList() {
           thumbnail: url,
         })
       } else if (file.type.startsWith('video/')) {
-        const url = URL.createObjectURL(file)
-        addScene({
-          type: 'video',
-          name: file.name,
-          src: url,
-        })
+        await addVideoScene(file)
       } else if (file.name.endsWith('.pptx')) {
         try {
           const slides = await parsePptx(file)
-          const pptxFileId = `pptx-${Date.now()}-${file.name}`
+          const pptxFileId = `pptx-${++pptxCounter}-${file.name}`
           for (const slide of slides) {
             const dataUrl = svgToDataUrl(slide.svg)
             addScene({
@@ -234,12 +293,14 @@ export function SceneList() {
               pptxFileId,
             })
           }
+          toast.success(`Đã trích xuất ${slides.length} slide từ "${file.name}"`)
         } catch (err) {
           console.error('Error parsing PPTX:', err)
+          toast.error(`Lỗi khi đọc file "${file.name}"`)
         }
       }
     }
-  }, [addScene])
+  }, [addScene, addVideoScene])
 
   // === QUICK BATCH FILE UPLOAD ===
   const handleQuickUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,16 +317,11 @@ export function SceneList() {
           thumbnail: url,
         })
       } else if (file.type.startsWith('video/')) {
-        const url = URL.createObjectURL(file)
-        addScene({
-          type: 'video',
-          name: file.name,
-          src: url,
-        })
+        await addVideoScene(file)
       } else if (file.name.endsWith('.pptx')) {
         try {
           const slides = await parsePptx(file)
-          const pptxFileId = `pptx-${Date.now()}-${file.name}`
+          const pptxFileId = `pptx-${++pptxCounter}-${file.name}`
           for (const slide of slides) {
             const dataUrl = svgToDataUrl(slide.svg)
             addScene({
@@ -276,14 +332,16 @@ export function SceneList() {
               pptxFileId,
             })
           }
+          toast.success(`Đã trích xuất ${slides.length} slide từ "${file.name}"`)
         } catch (err) {
           console.error('Error parsing PPTX:', err)
+          toast.error(`Lỗi khi đọc file "${file.name}"`)
         }
       }
     }
     // Reset input so same file can be re-added
     e.target.value = ''
-  }, [addScene])
+  }, [addScene, addVideoScene])
 
   return (
     <div
@@ -497,7 +555,7 @@ export function TextOverlayPanel() {
 }
 
 /**
- * Control Panel - full panel layout (integrated into the bottom editing area)
+ * Control Panel - with projection buttons at bottom
  */
 const SCREEN_PRESETS = [
   { label: '16:9 (1920×1080)', value: '16:9', width: 1920, height: 1080 },
@@ -530,6 +588,7 @@ export function ControlPanel() {
     saveProject,
     screenSize,
     setScreenSize,
+    updateScene,
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
@@ -542,6 +601,18 @@ export function ControlPanel() {
   })
   const [customWidth, setCustomWidth] = useState(screenSize?.width || 1920)
   const [customHeight, setCustomHeight] = useState(screenSize?.height || 1080)
+
+  // Video trim state
+  const [trimStartInput, setTrimStartInput] = useState<string>('')
+  const [trimEndInput, setTrimEndInput] = useState<string>('')
+
+  // Sync trim inputs when current scene changes
+  useEffect(() => {
+    if (isVideoScene) {
+      setTrimStartInput(currentScene.trimStart !== undefined ? currentScene.trimStart.toFixed(1) : '')
+      setTrimEndInput(currentScene.trimEnd !== undefined ? currentScene.trimEnd.toFixed(1) : '')
+    }
+  }, [currentScene?.id, isVideoScene, currentScene?.trimStart, currentScene?.trimEnd])
 
   const handleScreenPresetChange = (value: string) => {
     setScreenPreset(value)
@@ -569,7 +640,6 @@ export function ControlPanel() {
 
   useEffect(() => {
     // Try to detect local IP for remote device instructions
-    // Use WebRTC to get local IP
     try {
       const pc = new RTCPeerConnection({ iceServers: [] })
       pc.createDataChannel('')
@@ -605,18 +675,31 @@ export function ControlPanel() {
     window.open('/output', '_blank')
   }
 
-  const handleToggleLive = async () => {
-    if (isLive) {
-      stopLive()
-      const outputWin = usePresentationStore.getState().outputWindowRef
-      if (outputWin && !outputWin.closed) {
-        outputWin.close()
-      }
-      setOutputWindowRef(null)
-    } else {
-      goLive()
-      openOutputWindow()
+  // === PROJECTION BUTTONS ===
+  const handleStartProjection = async () => {
+    // Local projection: open output window on this machine
+    goLive()
+    openOutputWindow()
+    toast.success('Đã bắt đầu chiếu cục bộ')
+  }
+
+  const handleStartOnlineProjection = async () => {
+    // Online projection: enable SSE sync + show URL for other devices
+    goLive()
+    // Also open local output window
+    openOutputWindow()
+    setShowRemoteInfo(true)
+    toast.success('Đã bật chiếu online - chia sẻ URL cho thiết bị khác')
+  }
+
+  const handleStopAll = () => {
+    stopLive()
+    const outputWin = usePresentationStore.getState().outputWindowRef
+    if (outputWin && !outputWin.closed) {
+      outputWin.close()
     }
+    setOutputWindowRef(null)
+    toast.success('Đã tắt toàn bộ chiếu')
   }
 
   const openOutputWindow = () => {
@@ -634,7 +717,7 @@ export function ControlPanel() {
     const w = window.open(
       '/output',
       'presentation_output',
-      'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no'
+      `width=${screenSize.width},height=${screenSize.height},menubar=no,toolbar=no,location=no,status=no`
     )
     if (w) {
       setOutputWindowRef(w)
@@ -642,7 +725,7 @@ export function ControlPanel() {
         try {
           if (w.document && w.document.readyState === 'complete') {
             clearInterval(checkLoaded)
-            const state = usePresentationStore.getState()
+            const state = usePresentationStore.getState() as any
             const cs = state.scenes[state.currentSceneIndex]
             w.postMessage(
               {
@@ -671,8 +754,25 @@ export function ControlPanel() {
     }
   }
 
+  // === VIDEO TRIM HANDLERS ===
+  const handleApplyTrim = () => {
+    if (!isVideoScene || !currentScene) return
+    const trimStart = trimStartInput ? parseFloat(trimStartInput) : undefined
+    const trimEnd = trimEndInput ? parseFloat(trimEndInput) : undefined
+    updateScene(currentScene.id, { trimStart, trimEnd })
+    toast.success('Đã áp dụng cắt video')
+  }
+
+  const handleClearTrim = () => {
+    if (!isVideoScene || !currentScene) return
+    updateScene(currentScene.id, { trimStart: undefined, trimEnd: undefined })
+    setTrimStartInput('')
+    setTrimEndInput('')
+    toast.success('Đã xoá cắt video')
+  }
+
   return (
-    <div className="flex flex-col h-full gap-2">
+    <div className="flex flex-col h-full gap-1.5">
       <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
         Điều khiển
       </h3>
@@ -720,30 +820,6 @@ export function ControlPanel() {
             Đen/Bật màn hình (Phím B)
           </TooltipContent>
         </Tooltip>
-
-        {/* Live toggle */}
-        <Button
-          size="sm"
-          onClick={handleToggleLive}
-          className={`h-7 gap-1 px-3 ${
-            isLive
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }`}
-        >
-          <MonitorUp className="w-3.5 h-3.5" />
-          {isLive ? (
-            <>
-              <Pause className="w-3 h-3" />
-              <span className="text-[10px]">Dừng</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3 h-3" />
-              <span className="text-[10px]">Chiếu</span>
-            </>
-          )}
-        </Button>
       </div>
 
       {/* Transition row */}
@@ -827,6 +903,59 @@ export function ControlPanel() {
         </div>
       )}
 
+      {/* Video trim controls (only when current scene is video) */}
+      {isVideoScene && (
+        <div className="bg-zinc-800/60 rounded-md p-1.5 space-y-1.5 border border-zinc-700/50">
+          <div className="flex items-center gap-1">
+            <Scissors className="w-3 h-3 text-purple-400" />
+            <span className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">Cắt video</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-zinc-500 w-8">Bắt đầu</span>
+            <Input
+              type="number"
+              value={trimStartInput}
+              onChange={(e) => setTrimStartInput(e.target.value)}
+              placeholder="0"
+              className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
+              min={0}
+              step={0.5}
+            />
+            <span className="text-[9px] text-zinc-500">giây</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-zinc-500 w-8">Kết thúc</span>
+            <Input
+              type="number"
+              value={trimEndInput}
+              onChange={(e) => setTrimEndInput(e.target.value)}
+              placeholder="cuối"
+              className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
+              min={0}
+              step={0.5}
+            />
+            <span className="text-[9px] text-zinc-500">giây</span>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              onClick={handleApplyTrim}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2 flex-1"
+            >
+              Áp dụng
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleClearTrim}
+              className="text-zinc-400 hover:text-red-400 text-[9px] h-5 px-2"
+            >
+              Xoá cắt
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Screen size selector */}
       <div className="flex items-center gap-1.5">
         <MonitorUp className="w-3 h-3 text-cyan-400 flex-shrink-0" />
@@ -876,8 +1005,58 @@ export function ControlPanel() {
         )}
       </div>
 
+      {/* === PROJECTION BUTTONS === */}
+      <div className="flex items-center gap-1 pt-1 border-t border-zinc-800">
+        {/* Chiếu (local projection) */}
+        <Button
+          size="sm"
+          onClick={isLive ? handleStopAll : handleStartProjection}
+          className={`h-7 gap-1 px-3 flex-1 ${
+            isLive
+              ? 'bg-red-600 hover:bg-red-700 text-white'
+              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+          }`}
+        >
+          <MonitorUp className="w-3.5 h-3.5" />
+          {isLive ? (
+            <>
+              <Pause className="w-3 h-3" />
+              <span className="text-[10px]">Dừng</span>
+            </>
+          ) : (
+            <>
+              <Play className="w-3 h-3" />
+              <span className="text-[10px]">Chiếu</span>
+            </>
+          )}
+        </Button>
+
+        {/* Chiếu Online */}
+        <Button
+          size="sm"
+          onClick={handleStartOnlineProjection}
+          className="h-7 gap-1 px-3 flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
+          disabled={isLive}
+        >
+          <GlobeIcon className="w-3.5 h-3.5" />
+          <span className="text-[10px]">Online</span>
+        </Button>
+
+        {/* Tắt tất cả */}
+        {isLive && (
+          <Button
+            size="sm"
+            onClick={handleStopAll}
+            className="h-7 gap-1 px-3 bg-red-800 hover:bg-red-900 text-white"
+          >
+            <Power className="w-3.5 h-3.5" />
+            <span className="text-[10px]">Tắt hết</span>
+          </Button>
+        )}
+      </div>
+
       {/* Project save/load + remote connection row */}
-      <div className="flex items-center gap-1 mt-auto">
+      <div className="flex items-center gap-1">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -991,7 +1170,7 @@ export function ControlPanel() {
 
           <div className="text-[8px] text-zinc-600 leading-relaxed pt-1 border-t border-zinc-700">
             <p>• Cả 2 thiết bị phải cùng mạng WiFi/LAN</p>
-            <p>• Nhấn &quot;Chiếu&quot; trước khi mở URL trên thiết bị khác</p>
+            <p>• Nhấn &quot;Chiếu&quot; hoặc &quot;Online&quot; trước khi mở URL trên thiết bị khác</p>
             <p>• Nhấn fullscreen trên thiết bị chiếu</p>
           </div>
         </div>

@@ -62,7 +62,10 @@ interface MediaRendererProps {
   scene: Scene
   className?: string
   isActive?: boolean
+  /** keepAlive = true means this is in the OUTPUT window (actual projection) */
   keepAlive?: boolean
+  /** Whether this is a preview panel (not the actual output) */
+  isPreview?: boolean
 }
 
 /**
@@ -70,23 +73,63 @@ interface MediaRendererProps {
  * - Memoized to prevent unnecessary re-renders
  * - GPU-accelerated with will-change hints
  * - Video preloading and seamless playback
+ * - Video only auto-plays in OUTPUT window, not in preview panels
+ * - Supports trimStart/trimEnd for video trimming
  */
-export const MediaRenderer = memo(function MediaRenderer({ scene, className = '', isActive = true, keepAlive = false }: MediaRendererProps) {
+export const MediaRenderer = memo(function MediaRenderer({ scene, className = '', isActive = true, keepAlive = false, isPreview = false }: MediaRendererProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoVolume = usePresentationStore((s) => s.videoVolume)
   const videoMuted = usePresentationStore((s) => s.videoMuted)
 
-  // Auto-play video when scene becomes active
+  // Whether video should actually play (only in output window, not in preview)
+  const shouldAutoPlay = isActive && keepAlive && !isPreview
+
+  // Auto-play video when scene becomes active in the output window
   useEffect(() => {
-    if (scene.type === 'video' && videoRef.current && isActive) {
+    if (scene.type === 'video' && videoRef.current && shouldAutoPlay) {
       const video = videoRef.current
       // Use requestAnimationFrame for smooth startup
       requestAnimationFrame(() => {
-        video.currentTime = 0
+        // Apply trim start
+        if (scene.trimStart !== undefined && scene.trimStart > 0) {
+          video.currentTime = scene.trimStart
+        } else {
+          video.currentTime = 0
+        }
         video.play().catch(() => {})
       })
     }
-  }, [scene.id, scene.type, isActive])
+  }, [scene.id, scene.type, shouldAutoPlay, scene.trimStart])
+
+  // Pause video when not active (especially in preview panels)
+  useEffect(() => {
+    if (scene.type === 'video' && videoRef.current && !shouldAutoPlay) {
+      const video = videoRef.current
+      video.pause()
+    }
+  }, [shouldAutoPlay, scene.type])
+
+  // Handle video trim end - pause or loop when reaching trimEnd
+  useEffect(() => {
+    if (scene.type !== 'video' || !videoRef.current || !shouldAutoPlay) return
+    if (scene.trimEnd === undefined && scene.trimStart === undefined) return
+
+    const video = videoRef.current
+    const handleTimeUpdate = () => {
+      if (scene.trimEnd !== undefined && video.currentTime >= scene.trimEnd) {
+        // Loop back to trimStart or pause
+        if (scene.trimStart !== undefined) {
+          video.currentTime = scene.trimStart
+          video.play().catch(() => {})
+        } else {
+          video.pause()
+        }
+      }
+    }
+
+    video.addEventListener('timeupdate', handleTimeUpdate)
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate)
+  }, [scene.type, shouldAutoPlay, scene.trimStart, scene.trimEnd])
 
   // Sync volume/mute
   useEffect(() => {
@@ -104,7 +147,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
 
     const forcePlay = () => {
       if (!videoRef.current) return
-      if (videoRef.current.paused && !videoRef.current.ended && isActive) {
+      if (videoRef.current.paused && !videoRef.current.ended && shouldAutoPlay) {
         videoRef.current.play().catch(() => {})
       }
     }
@@ -130,7 +173,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
 
     // Intercept the 'pause' event
     const handleVideoPause = () => {
-      if (isActive && !videoRef.current?.ended) {
+      if (shouldAutoPlay && !videoRef.current?.ended) {
         requestAnimationFrame(forcePlay)
       }
     }
@@ -146,7 +189,31 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
       window.removeEventListener('blur', handleWindowBlur)
       videoRef.current?.removeEventListener('pause', handleVideoPause)
     }
-  }, [keepAlive, scene.type, isActive])
+  }, [keepAlive, scene.type, shouldAutoPlay])
+
+  // For preview: show video thumbnail instead of playing video
+  if (scene.type === 'video' && isPreview && scene.thumbnail) {
+    return (
+      <div className={`relative w-full h-full ${className}`}>
+        <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden">
+          <img
+            src={scene.thumbnail}
+            alt={scene.name || 'Video'}
+            className="max-w-full max-h-full object-contain opacity-80"
+            loading="eager"
+          />
+          {/* Play icon overlay */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+              <svg className="w-6 h-6 text-white ml-1" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const renderContent = useMemo(() => {
     switch (scene.type) {
@@ -178,7 +245,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
               style={{ objectFit: 'contain', willChange: 'transform' }}
               controls={false}
               loop
-              autoPlay={isActive}
+              autoPlay={shouldAutoPlay}
               muted={videoMuted}
               playsInline
               preload="auto"
@@ -247,7 +314,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
         )
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene.id, scene.type, scene.src, scene.url, scene.content, scene.fontSize, scene.fontColor, scene.bgColor, scene.textAlign, scene.name, isActive, videoMuted])
+  }, [scene.id, scene.type, scene.src, scene.url, scene.content, scene.fontSize, scene.fontColor, scene.bgColor, scene.textAlign, scene.name, shouldAutoPlay, videoMuted, isPreview, scene.thumbnail])
 
   return <div className={`relative w-full h-full ${className}`}>{renderContent}</div>
 })
@@ -262,6 +329,7 @@ interface TransitionRendererProps {
   className?: string
   isActive?: boolean
   keepAlive?: boolean
+  isPreview?: boolean
 }
 
 export const TransitionRenderer = memo(function TransitionRenderer({
@@ -271,6 +339,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
   className = '',
   isActive = true,
   keepAlive = false,
+  isPreview = false,
 }: TransitionRendererProps) {
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
   const [isTransitioning, setIsTransitioning] = useState(false)
@@ -324,7 +393,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
     return (
       <div className={`w-full h-full overflow-hidden ${className}`} style={{ willChange: 'contents' }}>
         <div key={scene.id} className="w-full h-full">
-          <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} />
+          <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} isPreview={isPreview} />
         </div>
       </div>
     )
@@ -344,7 +413,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
           className={`transition-${transitionType}-exit`}
           style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
         >
-          <MediaRenderer scene={prevScene} isActive={false} keepAlive={keepAlive} />
+          <MediaRenderer scene={prevScene} isActive={false} keepAlive={keepAlive} isPreview={isPreview} />
         </div>
       )}
       <div
@@ -352,7 +421,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
         className={`transition-${transitionType}-enter`}
         style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
       >
-        <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} />
+        <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} isPreview={isPreview} />
       </div>
     </div>
   )

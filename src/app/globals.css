@@ -157,16 +157,31 @@
 
 /* ========================================
    Scene Transition Animations
+   GPU-optimized for smooth 60fps playback
    ======================================== */
 
-/* Container for cross-transitions */
+/* Container for cross-transitions - force GPU layer */
 .transition-container {
   position: relative;
   overflow: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 .transition-container > * {
   position: absolute;
   inset: 0;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* GPU hint for all transition elements */
+[class*="transition-"] {
+  will-change: opacity, transform;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Fade ── */

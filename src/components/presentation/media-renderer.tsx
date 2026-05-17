@@ -1,28 +1,25 @@
 'use client'
 
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react'
 import { usePresentationStore, Scene, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 
 // === WEB AUDIO API KEEP-ALIVE ===
-// Prevents browser from throttling video/audio when the tab loses focus
 let audioContext: AudioContext | null = null
 let silenceOscillator: OscillatorNode | null = null
 let silenceGain: GainNode | null = null
 
 function startAudioKeepAlive() {
-  if (audioContext) return // already running
+  if (audioContext) return
   try {
     audioContext = new AudioContext()
     silenceGain = audioContext.createGain()
-    silenceGain.gain.value = 0.001 // nearly silent
+    silenceGain.gain.value = 0.001
     silenceOscillator = audioContext.createOscillator()
-    silenceOscillator.frequency.value = 1 // sub-bass, inaudible
+    silenceOscillator.frequency.value = 1
     silenceOscillator.connect(silenceGain)
     silenceGain.connect(audioContext.destination)
     silenceOscillator.start()
-  } catch {
-    // AudioContext not available
-  }
+  } catch { /* ignore */ }
 }
 
 function stopAudioKeepAlive() {
@@ -31,23 +28,50 @@ function stopAudioKeepAlive() {
     silenceOscillator?.disconnect()
     silenceGain?.disconnect()
     audioContext?.close()
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
   audioContext = null
   silenceOscillator = null
   silenceGain = null
+}
+
+// === PRELOADING CACHE ===
+const preloadedImages = new Map<string, HTMLImageElement>()
+const preloadedVideos = new Map<string, HTMLVideoElement>()
+
+function preloadScene(scene: Scene) {
+  if (!scene.src) return
+  if (scene.type === 'image' || scene.type === 'pptx-slide') {
+    if (!preloadedImages.has(scene.src)) {
+      const img = new Image()
+      img.src = scene.src
+      preloadedImages.set(scene.src, img)
+    }
+  } else if (scene.type === 'video') {
+    if (!preloadedVideos.has(scene.src)) {
+      const vid = document.createElement('video')
+      vid.src = scene.src
+      vid.preload = 'auto'
+      vid.muted = true
+      vid.load()
+      preloadedVideos.set(scene.src, vid)
+    }
+  }
 }
 
 interface MediaRendererProps {
   scene: Scene
   className?: string
   isActive?: boolean
-  /** If true, keep video playing even when tab loses focus */
   keepAlive?: boolean
 }
 
-export function MediaRenderer({ scene, className = '', isActive = true, keepAlive = false }: MediaRendererProps) {
+/**
+ * MediaRenderer - Optimized for smooth playback
+ * - Memoized to prevent unnecessary re-renders
+ * - GPU-accelerated with will-change hints
+ * - Video preloading and seamless playback
+ */
+export const MediaRenderer = memo(function MediaRenderer({ scene, className = '', isActive = true, keepAlive = false }: MediaRendererProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoVolume = usePresentationStore((s) => s.videoVolume)
   const videoMuted = usePresentationStore((s) => s.videoMuted)
@@ -55,8 +79,12 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
   // Auto-play video when scene becomes active
   useEffect(() => {
     if (scene.type === 'video' && videoRef.current && isActive) {
-      videoRef.current.currentTime = 0
-      videoRef.current.play().catch(() => {})
+      const video = videoRef.current
+      // Use requestAnimationFrame for smooth startup
+      requestAnimationFrame(() => {
+        video.currentTime = 0
+        video.play().catch(() => {})
+      })
     }
   }, [scene.id, scene.type, isActive])
 
@@ -69,11 +97,9 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
   }, [videoVolume, videoMuted])
 
   // === ENHANCED BACKGROUND PLAYBACK FIX ===
-  // Keep video playing when user switches to another app/tab
   useEffect(() => {
     if (!keepAlive || scene.type !== 'video') return
 
-    // Start Web Audio API keep-alive to prevent browser throttling
     startAudioKeepAlive()
 
     const forcePlay = () => {
@@ -84,28 +110,28 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
     }
 
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Tab lost focus — force video to keep playing
-        forcePlay()
-      } else {
-        // Tab regained focus — ensure still playing
-        forcePlay()
-      }
-    }
-
-    const handleWindowBlur = () => {
-      // Window lost focus (user switched app)
       forcePlay()
     }
 
-    // Periodic keep-alive: force play every 2 seconds as safety net
-    const keepAliveInterval = setInterval(forcePlay, 2000)
+    const handleWindowBlur = () => {
+      forcePlay()
+    }
 
-    // Also handle the 'pause' event on the video element itself
+    // Use requestAnimationFrame-based keep-alive instead of setInterval for smoother behavior
+    let keepAliveRunning = true
+    const keepAliveLoop = () => {
+      if (!keepAliveRunning) return
+      forcePlay()
+      setTimeout(() => {
+        if (keepAliveRunning) requestAnimationFrame(keepAliveLoop)
+      }, 2000)
+    }
+    requestAnimationFrame(keepAliveLoop)
+
+    // Intercept the 'pause' event
     const handleVideoPause = () => {
       if (isActive && !videoRef.current?.ended) {
-        // Browser auto-paused; resume immediately
-        setTimeout(forcePlay, 50)
+        requestAnimationFrame(forcePlay)
       }
     }
 
@@ -114,41 +140,50 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
     videoRef.current?.addEventListener('pause', handleVideoPause)
 
     return () => {
+      keepAliveRunning = false
       stopAudioKeepAlive()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('blur', handleWindowBlur)
       videoRef.current?.removeEventListener('pause', handleVideoPause)
-      clearInterval(keepAliveInterval)
     }
   }, [keepAlive, scene.type, isActive])
 
-  const renderContent = () => {
+  const renderContent = useMemo(() => {
     switch (scene.type) {
       case 'image':
         return (
-          <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden">
+          <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden"
+            style={{ willChange: 'contents' }}
+          >
             <img
               src={scene.src}
               alt={scene.name || 'Image'}
               className="max-w-full max-h-full object-contain"
+              style={{ willChange: 'transform', imageRendering: 'auto' }}
+              loading="eager"
+              decoding="async"
             />
           </div>
         )
 
       case 'video':
         return (
-          <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden">
+          <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden"
+            style={{ willChange: 'contents' }}
+          >
             <video
               ref={videoRef}
               src={scene.src}
-              className="max-w-full max-h-full object-contain"
+              className="max-w-full max-h-full"
+              style={{ objectFit: 'contain', willChange: 'transform' }}
               controls={false}
               loop
               autoPlay={isActive}
               muted={videoMuted}
               playsInline
-              // Prevent browser from throttling video on background
-              style={{ objectFit: 'contain' as const }}
+              preload="auto"
+              disablePictureInPicture
+              disableRemotePlayback
             />
           </div>
         )
@@ -161,6 +196,7 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
               className="w-full h-full border-0"
               title={scene.name}
               sandbox="allow-scripts allow-same-origin allow-popups"
+              loading="eager"
             />
           </div>
         )
@@ -169,7 +205,7 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
         return (
           <div
             className="w-full h-full flex items-center justify-center p-8"
-            style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}
+            style={{ backgroundColor: scene.bgColor || '#1a1a2e', willChange: 'contents' }}
           >
             <div
               className="max-w-[90%] break-words"
@@ -179,6 +215,7 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
                 textAlign: scene.textAlign || 'center',
                 fontFamily: 'Arial, sans-serif',
                 lineHeight: 1.4,
+                willChange: 'auto',
               }}
             >
               {scene.content}
@@ -188,11 +225,16 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
 
       case 'pptx-slide':
         return (
-          <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden">
+          <div className="w-full h-full flex items-center justify-center bg-black overflow-hidden"
+            style={{ willChange: 'contents' }}
+          >
             <img
               src={scene.src}
               alt={scene.name || 'PPTX Slide'}
               className="max-w-full max-h-full object-contain"
+              style={{ willChange: 'transform' }}
+              loading="eager"
+              decoding="async"
             />
           </div>
         )
@@ -204,13 +246,14 @@ export function MediaRenderer({ scene, className = '', isActive = true, keepAliv
           </div>
         )
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene.id, scene.type, scene.src, scene.url, scene.content, scene.fontSize, scene.fontColor, scene.bgColor, scene.textAlign, scene.name, isActive, videoMuted])
 
-  return <div className={`relative w-full h-full ${className}`}>{renderContent()}</div>
-}
+  return <div className={`relative w-full h-full ${className}`}>{renderContent}</div>
+})
 
 /**
- * TransitionRenderer - cross-transition that shows both old and new scene simultaneously.
+ * TransitionRenderer - Optimized cross-transition with GPU compositing
  */
 interface TransitionRendererProps {
   scene: Scene | undefined
@@ -221,7 +264,7 @@ interface TransitionRendererProps {
   keepAlive?: boolean
 }
 
-export function TransitionRenderer({
+export const TransitionRenderer = memo(function TransitionRenderer({
   scene,
   transitionType,
   transitionDuration,
@@ -233,6 +276,17 @@ export function TransitionRenderer({
   const [isTransitioning, setIsTransitioning] = useState(false)
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Preload next scene for instant switching
+  useEffect(() => {
+    const scenes = usePresentationStore.getState().scenes
+    const currentIdx = scenes.findIndex((s) => s.id === scene?.id)
+    // Preload next 2 scenes
+    for (let i = 1; i <= 2; i++) {
+      const nextScene = scenes[currentIdx + i]
+      if (nextScene) preloadScene(nextScene)
+    }
+  }, [scene?.id])
 
   useEffect(() => {
     const newId = scene?.id
@@ -268,7 +322,7 @@ export function TransitionRenderer({
 
   if (transitionType === 'none' || !isTransitioning) {
     return (
-      <div className={`w-full h-full overflow-hidden ${className}`}>
+      <div className={`w-full h-full overflow-hidden ${className}`} style={{ willChange: 'contents' }}>
         <div key={scene.id} className="w-full h-full">
           <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} />
         </div>
@@ -280,12 +334,15 @@ export function TransitionRenderer({
   const durationVar = { '--transition-duration': duration } as React.CSSProperties
 
   return (
-    <div className={`w-full h-full overflow-hidden transition-container ${className}`} style={durationVar}>
+    <div
+      className={`w-full h-full overflow-hidden transition-container ${className}`}
+      style={{ ...durationVar, willChange: 'contents' }}
+    >
       {prevScene && (
         <div
           key={`exit-${prevScene.id}`}
           className={`transition-${transitionType}-exit`}
-          style={{ animationDuration: duration, ...durationVar }}
+          style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
         >
           <MediaRenderer scene={prevScene} isActive={false} keepAlive={keepAlive} />
         </div>
@@ -293,13 +350,13 @@ export function TransitionRenderer({
       <div
         key={`enter-${scene.id}`}
         className={`transition-${transitionType}-enter`}
-        style={{ animationDuration: duration, ...durationVar }}
+        style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
       >
         <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} />
       </div>
     </div>
   )
-}
+})
 
 /**
  * Component that syncs with the output window for dual-screen projection
@@ -310,9 +367,7 @@ export function OutputSync() {
 
   const getOutputContent = useCallback(() => {
     if (!isLive) return null
-    if (blackScreen) {
-      return { type: 'black' as const }
-    }
+    if (blackScreen) return { type: 'black' as const }
     if (!currentScene) return { type: 'empty' as const }
     return {
       type: 'scene' as const,
@@ -336,9 +391,7 @@ export function OutputSync() {
             payload: output,
           }, '*')
         }
-      } catch {
-        // Window may be closed
-      }
+      } catch { /* Window may be closed */ }
     }
   }, [getOutputContent])
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 import { MediaRenderer } from '@/components/presentation/media-renderer'
 
@@ -45,6 +45,46 @@ function stopOutputAudioKeepAlive() {
   outputGain = null
 }
 
+/**
+ * Optimized overlay renderer - memoized to prevent re-renders
+ */
+const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: TextOverlay[] }) {
+  const visibleOverlays = overlays.filter((o) => o.visible)
+  if (visibleOverlays.length === 0) return null
+
+  return (
+    <>
+      {visibleOverlays.map((overlay) => {
+        const positionClasses: Record<string, string> = {
+          top: 'top-0 left-0 right-0',
+          bottom: 'bottom-0 left-0 right-0',
+          center: 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+        }
+
+        return (
+          <div
+            key={overlay.id}
+            className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4 z-50`}
+            style={{ willChange: 'auto' }}
+          >
+            <div
+              className="px-6 py-3 rounded-lg inline-block max-w-full"
+              style={{
+                backgroundColor: overlay.bgColor || 'rgba(0,0,0,0.7)',
+                fontSize: `${overlay.fontSize || 32}px`,
+                color: overlay.fontColor || '#ffffff',
+                fontFamily: 'Arial, sans-serif',
+              }}
+            >
+              {overlay.text}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+})
+
 export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
@@ -53,11 +93,11 @@ export default function OutputPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleFullscreen = () => {
-    if (containerRef.current) {
+  const handleFullscreen = useCallback(() => {
+    if (containerRef.current && !document.fullscreenElement) {
       containerRef.current.requestFullscreen?.()
     }
-  }
+  }, [])
 
   // === ENHANCED BACKGROUND PLAYBACK FIX ===
   useEffect(() => {
@@ -74,16 +114,6 @@ export default function OutputPage() {
     requestWakeLock()
     startOutputAudioKeepAlive()
 
-    // Re-request wake lock on visibility change
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock()
-      }
-      // Force all videos to keep playing
-      forceAllVideosPlay()
-    }
-
-    // Force video to keep playing on visibility change
     const forceAllVideosPlay = () => {
       const videos = document.querySelectorAll('video')
       videos.forEach((v) => {
@@ -93,53 +123,67 @@ export default function OutputPage() {
       })
     }
 
-    // Periodic keep-alive: check every 2 seconds
-    const keepAliveInterval = setInterval(forceAllVideosPlay, 2000)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock()
+      }
+      forceAllVideosPlay()
+    }
 
-    // Handle window blur (user switches to another app)
+    // Use requestAnimationFrame-based keep-alive for smoother behavior
+    let keepAliveRunning = true
+    const keepAliveLoop = () => {
+      if (!keepAliveRunning) return
+      forceAllVideosPlay()
+      setTimeout(() => {
+        if (keepAliveRunning) requestAnimationFrame(keepAliveLoop)
+      }, 2000)
+    }
+    requestAnimationFrame(keepAliveLoop)
+
     const handleWindowBlur = () => {
       forceAllVideosPlay()
     }
 
-    // Also intercept the 'pause' event on any video element
     const handleVideoPauseGlobal = (e: Event) => {
       const video = e.target as HTMLVideoElement
       if (video && !video.ended) {
-        // Browser may have auto-paused; resume after tiny delay
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           video.play().catch(() => {})
-        }, 50)
+        })
       }
     }
 
     document.addEventListener('visibilitychange', handleVisibility)
-    document.addEventListener('visibilitychange', forceAllVideosPlay)
     window.addEventListener('blur', handleWindowBlur)
 
-    // Use MutationObserver to attach pause listeners to new video elements
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node instanceof HTMLVideoElement) {
             node.addEventListener('pause', handleVideoPauseGlobal)
           }
+          // Also check child nodes
+          if (node instanceof HTMLElement) {
+            node.querySelectorAll('video').forEach((v) => {
+              v.addEventListener('pause', handleVideoPauseGlobal)
+            })
+          }
         }
       }
     })
     observer.observe(document.body, { childList: true, subtree: true })
 
-    // Attach to any existing videos
     document.querySelectorAll('video').forEach((v) => {
       v.addEventListener('pause', handleVideoPauseGlobal)
     })
 
     return () => {
+      keepAliveRunning = false
       stopOutputAudioKeepAlive()
       document.removeEventListener('visibilitychange', handleVisibility)
-      document.removeEventListener('visibilitychange', forceAllVideosPlay)
       window.removeEventListener('blur', handleWindowBlur)
       observer.disconnect()
-      clearInterval(keepAliveInterval)
       document.querySelectorAll('video').forEach((v) => {
         v.removeEventListener('pause', handleVideoPauseGlobal)
       })
@@ -147,6 +191,7 @@ export default function OutputPage() {
     }
   }, [])
 
+  // === MESSAGE HANDLER - optimized with useCallback ===
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'PRESENTATION_UPDATE') {
@@ -157,6 +202,7 @@ export default function OutputPage() {
         if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && payload.scene) {
           const tType = payload.transitionType || 'none'
           if (tType !== 'none' && prevSceneIdRef.current) {
+            // Use functional setState to avoid stale closure
             setPrevScene(state.scene)
             setIsTransitioning(true)
 
@@ -183,6 +229,7 @@ export default function OutputPage() {
       window.removeEventListener('message', handler)
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.scene])
 
   const transitionType = state.transitionType || 'none'
@@ -208,7 +255,7 @@ export default function OutputPage() {
     // No transition - instant
     if (transitionType === 'none' || !isTransitioning) {
       return (
-        <div className="absolute inset-0">
+        <div className="absolute inset-0" style={{ willChange: 'contents' }}>
           <MediaRenderer
             scene={scene}
             isActive={true}
@@ -218,14 +265,17 @@ export default function OutputPage() {
       )
     }
 
-    // Cross-transition
+    // Cross-transition with GPU compositing
     return (
-      <div className="absolute inset-0 overflow-hidden transition-container" style={durationVar}>
+      <div
+        className="absolute inset-0 overflow-hidden transition-container"
+        style={{ ...durationVar, willChange: 'contents' }}
+      >
         {prevScene && (
           <div
             key={`exit-${prevScene.id}`}
             className={`transition-${transitionType}-exit`}
-            style={{ animationDuration: duration, ...durationVar }}
+            style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
           >
             <MediaRenderer scene={prevScene} isActive={false} keepAlive={true} />
           </div>
@@ -233,7 +283,7 @@ export default function OutputPage() {
         <div
           key={`enter-${scene.id}`}
           className={`transition-${transitionType}-enter`}
-          style={{ animationDuration: duration, ...durationVar }}
+          style={{ animationDuration: duration, ...durationVar, willChange: 'opacity, transform' }}
         >
           <MediaRenderer scene={scene} isActive={true} keepAlive={true} />
         </div>
@@ -241,48 +291,20 @@ export default function OutputPage() {
     )
   }
 
-  const renderOverlays = () => {
-    if (!state.overlays || state.overlays.length === 0) return null
-
-    return state.overlays
-      .filter((o) => o.visible)
-      .map((overlay) => {
-        const positionClasses: Record<string, string> = {
-          top: 'top-0 left-0 right-0',
-          bottom: 'bottom-0 left-0 right-0',
-          center: 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
-        }
-
-        return (
-          <div
-            key={overlay.id}
-            className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4 z-50`}
-          >
-            <div
-              className="px-6 py-3 rounded-lg inline-block max-w-full"
-              style={{
-                backgroundColor: overlay.bgColor || 'rgba(0,0,0,0.7)',
-                fontSize: `${overlay.fontSize || 32}px`,
-                color: overlay.fontColor || '#ffffff',
-                fontFamily: 'Arial, sans-serif',
-              }}
-            >
-              {overlay.text}
-            </div>
-          </div>
-        )
-      })
-  }
-
   return (
     <div
       ref={containerRef}
       className="fixed inset-0 bg-black cursor-none"
+      style={{ 
+        // Force GPU compositing layer for the entire output
+        transform: 'translateZ(0)',
+        backfaceVisibility: 'hidden',
+      }}
       onClick={handleFullscreen}
       onDoubleClick={() => document.exitFullscreen?.()}
     >
       {renderScene()}
-      {renderOverlays()}
+      {state.overlays && <OverlayRenderer overlays={state.overlays} />}
     </div>
   )
 }

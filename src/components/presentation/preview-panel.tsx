@@ -187,7 +187,7 @@ export function PreviewPanel() {
           <div className="w-2 h-2 rounded-full bg-zinc-600" />
           <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tiếp theo</span>
         </div>
-        <div className="flex-1 bg-black rounded-lg overflow-hidden border border-zinc-800 relative" style={{ aspectRatio: aspectRatio }}>
+        <div className="flex-1 max-h-full bg-black rounded-lg overflow-hidden border border-zinc-800 relative" style={{ aspectRatio: aspectRatio }}>
           {nextScene ? (
             <MediaRenderer scene={nextScene} isActive={false} isPreview={true} />
           ) : (
@@ -273,7 +273,7 @@ export function PreviewPanel() {
             </span>
           )}
         </div>
-        <div className="flex-1 bg-black rounded-lg overflow-hidden border border-zinc-700 relative">
+        <div className="flex-1 max-h-full bg-black rounded-lg overflow-hidden border border-zinc-700 relative" style={{ aspectRatio: aspectRatio }}>
           {blackScreen ? (
             <div className="absolute inset-0 bg-black flex items-center justify-center">
               <div className="text-zinc-700 text-center">

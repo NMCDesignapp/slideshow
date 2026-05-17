@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType, Scene } from '@/store/presentation-store'
 import { parsePptx, svgToDataUrl } from '@/lib/pptx-parser'
 import {
@@ -45,6 +45,9 @@ import {
   Upload,
   Save,
   FolderOpen,
+  Wifi,
+  Copy,
+  ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -483,6 +486,49 @@ export function ControlPanel() {
   const currentScene = scenes[currentSceneIndex]
   const isVideoScene = currentScene?.type === 'video'
 
+  // === REMOTE CONNECTION INFO ===
+  const [localIp, setLocalIp] = useState<string>('')
+  const [showRemoteInfo, setShowRemoteInfo] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    // Try to detect local IP for remote device instructions
+    // Use WebRTC to get local IP
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] })
+      pc.createDataChannel('')
+      pc.createOffer().then((offer) => pc.setLocalDescription(offer))
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) return
+        const match = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/)
+        if (match && match[1] !== '0.0.0.0') {
+          setLocalIp(match[1])
+          pc.close()
+        }
+      }
+    } catch { /* WebRTC not available */ }
+
+    // Fallback: use hostname
+    if (!localIp) {
+      setLocalIp(window.location.hostname)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const outputUrl = localIp ? `http://${localIp}:${window.location.port || 3000}/output` : ''
+
+  const copyUrl = () => {
+    if (outputUrl) {
+      navigator.clipboard.writeText(outputUrl).catch(() => {})
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const openOutputInNewTab = () => {
+    window.open('/output', '_blank')
+  }
+
   const handleToggleLive = async () => {
     if (isLive) {
       stopLive()
@@ -705,7 +751,7 @@ export function ControlPanel() {
         </div>
       )}
 
-      {/* Project save/load row */}
+      {/* Project save/load + remote connection row */}
       <div className="flex items-center gap-1 mt-auto">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -739,7 +785,86 @@ export function ControlPanel() {
             Mở dự án đã lưu
           </TooltipContent>
         </Tooltip>
+
+        <div className="flex-1" />
+
+        {/* Remote device connection */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowRemoteInfo(!showRemoteInfo)}
+              className={`h-6 gap-1 px-2 ${showRemoteInfo ? 'text-cyan-400' : 'text-zinc-500 hover:text-cyan-400'}`}
+            >
+              <Wifi className="w-3 h-3" />
+              <span className="text-[9px]">Thiết bị khác</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            Chiếu từ thiết bị khác qua mạng LAN
+          </TooltipContent>
+        </Tooltip>
       </div>
+
+      {/* Remote connection info panel */}
+      {showRemoteInfo && (
+        <div className="bg-zinc-800/80 rounded-md p-2 space-y-2 border border-zinc-700">
+          <div className="flex items-center gap-1.5">
+            <Wifi className="w-3 h-3 text-cyan-400" />
+            <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Chiếu từ thiết bị khác</span>
+          </div>
+
+          <p className="text-[9px] text-zinc-400 leading-relaxed">
+            Mở URL bên dưới trên thiết bị khác (cùng mạng WiFi/LAN) để hiển thị màn hình chiếu:
+          </p>
+
+          {/* URL display + copy */}
+          {outputUrl && (
+            <div className="flex items-center gap-1 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-600">
+              <code className="text-[10px] text-emerald-400 font-mono flex-1 truncate">{outputUrl}</code>
+              <button
+                onClick={copyUrl}
+                className="text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+              >
+                {copied ? (
+                  <span className="text-[8px] text-emerald-400">Đã copy!</span>
+                ) : (
+                  <Copy className="w-3 h-3" />
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Quick actions */}
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={openOutputInNewTab}
+              className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
+            >
+              <ExternalLink className="w-2.5 h-2.5" />
+              Mở tab mới
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={copyUrl}
+              className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
+            >
+              <Copy className="w-2.5 h-2.5" />
+              Copy URL
+            </Button>
+          </div>
+
+          <div className="text-[8px] text-zinc-600 leading-relaxed pt-1 border-t border-zinc-700">
+            <p>• Cả 2 thiết bị phải cùng mạng WiFi/LAN</p>
+            <p>• Nhấn &quot;Chiếu&quot; trước khi mở URL trên thiết bị khác</p>
+            <p>• Nhấn fullscreen trên thiết bị chiếu</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -360,6 +360,9 @@ export const TransitionRenderer = memo(function TransitionRenderer({
 
 /**
  * Component that syncs with the output window for dual-screen projection
+ * Supports both:
+ * - LOCAL: postMessage to popup window (same device, dual monitor)
+ * - REMOTE: POST to /api/sync for cross-device (SSE to output page)
  */
 export function OutputSync() {
   const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration, videoVolume, videoMuted } = usePresentationStore()
@@ -382,17 +385,25 @@ export function OutputSync() {
 
   useEffect(() => {
     const output = getOutputContent()
-    if (output) {
-      try {
-        const outputWindow = usePresentationStore.getState().outputWindowRef
-        if (outputWindow && !outputWindow.closed) {
-          outputWindow.postMessage({
-            type: 'PRESENTATION_UPDATE',
-            payload: output,
-          }, '*')
-        }
-      } catch { /* Window may be closed */ }
-    }
+    if (!output) return
+
+    // MODE 1: Local sync (postMessage to popup window)
+    try {
+      const outputWindow = usePresentationStore.getState().outputWindowRef
+      if (outputWindow && !outputWindow.closed) {
+        outputWindow.postMessage({
+          type: 'PRESENTATION_UPDATE',
+          payload: output,
+        }, '*')
+      }
+    } catch { /* Window may be closed */ }
+
+    // MODE 2: Remote sync (POST to API for cross-device SSE)
+    fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(output),
+    }).catch(() => { /* Network error, ignore */ })
   }, [getOutputContent])
 
   return null

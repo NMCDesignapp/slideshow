@@ -46,7 +46,7 @@ function stopOutputAudioKeepAlive() {
 }
 
 /**
- * Optimized overlay renderer - memoized to prevent re-renders
+ * Optimized overlay renderer
  */
 const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: TextOverlay[] }) {
   const visibleOverlays = overlays.filter((o) => o.visible)
@@ -65,7 +65,6 @@ const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: 
           <div
             key={overlay.id}
             className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4 z-50`}
-            style={{ willChange: 'auto' }}
           >
             <div
               className="px-6 py-3 rounded-lg inline-block max-w-full"
@@ -89,6 +88,8 @@ export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [connectionMode, setConnectionMode] = useState<'local' | 'remote' | 'unknown'>('unknown')
+  const [connected, setConnected] = useState(false)
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -99,7 +100,7 @@ export default function OutputPage() {
     }
   }, [])
 
-  // === ENHANCED BACKGROUND PLAYBACK FIX ===
+  // === BACKGROUND PLAYBACK FIX ===
   useEffect(() => {
     let wakeLock: any = null
 
@@ -130,7 +131,6 @@ export default function OutputPage() {
       forceAllVideosPlay()
     }
 
-    // Use requestAnimationFrame-based keep-alive for smoother behavior
     let keepAliveRunning = true
     const keepAliveLoop = () => {
       if (!keepAliveRunning) return
@@ -163,7 +163,6 @@ export default function OutputPage() {
           if (node instanceof HTMLVideoElement) {
             node.addEventListener('pause', handleVideoPauseGlobal)
           }
-          // Also check child nodes
           if (node instanceof HTMLElement) {
             node.querySelectorAll('video').forEach((v) => {
               v.addEventListener('pause', handleVideoPauseGlobal)
@@ -191,46 +190,97 @@ export default function OutputPage() {
     }
   }, [])
 
-  // === MESSAGE HANDLER - optimized with useCallback ===
+  // === STATE UPDATE HANDLER (shared by both local and remote) ===
+  const handleStateUpdate = useCallback((payload: OutputState) => {
+    const newId = payload.scene?.id
+
+    // Detect scene change for cross-transition
+    if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && payload.scene) {
+      const tType = payload.transitionType || 'none'
+      if (tType !== 'none' && prevSceneIdRef.current) {
+        setPrevScene(state.scene)
+        setIsTransitioning(true)
+
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        timeoutRef.current = setTimeout(() => {
+          setPrevScene(undefined)
+          setIsTransitioning(false)
+        }, (payload.transitionDuration || DEFAULT_TRANSITION_DURATION) + 50)
+      }
+    }
+
+    prevSceneIdRef.current = newId
+    setState(payload)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.scene])
+
+  // === MODE 1: LOCAL (postMessage from opener window) ===
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'PRESENTATION_UPDATE') {
-        const payload = event.data.payload as OutputState
-        const newId = payload.scene?.id
-
-        // Detect scene change for cross-transition
-        if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && payload.scene) {
-          const tType = payload.transitionType || 'none'
-          if (tType !== 'none' && prevSceneIdRef.current) {
-            // Use functional setState to avoid stale closure
-            setPrevScene(state.scene)
-            setIsTransitioning(true)
-
-            if (timeoutRef.current) clearTimeout(timeoutRef.current)
-            timeoutRef.current = setTimeout(() => {
-              setPrevScene(undefined)
-              setIsTransitioning(false)
-            }, (payload.transitionDuration || DEFAULT_TRANSITION_DURATION) + 50)
-          }
-        }
-
-        prevSceneIdRef.current = newId
-        setState(payload)
+        setConnectionMode('local')
+        setConnected(true)
+        handleStateUpdate(event.data.payload as OutputState)
       }
     }
 
     window.addEventListener('message', handler)
 
+    // Signal opener that we're ready
     if (window.opener) {
       window.opener.postMessage({ type: 'OUTPUT_READY' }, '*')
+      setConnectionMode('local')
     }
 
     return () => {
       window.removeEventListener('message', handler)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.scene])
+  }, [handleStateUpdate])
+
+  // === MODE 2: REMOTE (SSE from server - for cross-device) ===
+  useEffect(() => {
+    // Only try SSE if not opened as a popup (no window.opener)
+    if (window.opener) return
+
+    setConnectionMode('remote')
+
+    let eventSource: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = () => {
+      try {
+        eventSource = new EventSource('/api/sync?stream=true')
+
+        eventSource.onopen = () => {
+          setConnected(true)
+        }
+
+        eventSource.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data) as OutputState
+            handleStateUpdate(payload)
+          } catch { /* ignore parse errors */ }
+        }
+
+        eventSource.onerror = () => {
+          setConnected(false)
+          eventSource?.close()
+          // Auto-reconnect after 3 seconds
+          reconnectTimer = setTimeout(connect, 3000)
+        }
+      } catch {
+        // SSE not supported, fallback to polling
+        reconnectTimer = setTimeout(connect, 5000)
+      }
+    }
+
+    connect()
+
+    return () => {
+      eventSource?.close()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+    }
+  }, [handleStateUpdate])
 
   const transitionType = state.transitionType || 'none'
   const transitionDuration = state.transitionDuration || DEFAULT_TRANSITION_DURATION
@@ -245,27 +295,26 @@ export default function OutputPage() {
     if (state.type === 'empty' || !state.scene) {
       return (
         <div className="absolute inset-0 bg-black flex items-center justify-center text-white/20">
-          <p className="text-xl">Đang chờ nội dung trình chiếu...</p>
+          <div className="text-center">
+            <p className="text-xl mb-2">Đang chờ nội dung trình chiếu...</p>
+            {connectionMode === 'remote' && !connected && (
+              <p className="text-sm text-yellow-400/60">Đang kết nối tới máy điều khiển...</p>
+            )}
+          </div>
         </div>
       )
     }
 
     const scene = state.scene
 
-    // No transition - instant
     if (transitionType === 'none' || !isTransitioning) {
       return (
         <div className="absolute inset-0" style={{ willChange: 'contents' }}>
-          <MediaRenderer
-            scene={scene}
-            isActive={true}
-            keepAlive={true}
-          />
+          <MediaRenderer scene={scene} isActive={true} keepAlive={true} />
         </div>
       )
     }
 
-    // Cross-transition with GPU compositing
     return (
       <div
         className="absolute inset-0 overflow-hidden transition-container"
@@ -295,8 +344,7 @@ export default function OutputPage() {
     <div
       ref={containerRef}
       className="fixed inset-0 bg-black cursor-none"
-      style={{ 
-        // Force GPU compositing layer for the entire output
+      style={{
         transform: 'translateZ(0)',
         backfaceVisibility: 'hidden',
       }}
@@ -305,6 +353,16 @@ export default function OutputPage() {
     >
       {renderScene()}
       {state.overlays && <OverlayRenderer overlays={state.overlays} />}
+
+      {/* Connection status indicator - subtle, top right */}
+      {connectionMode === 'remote' && (
+        <div className="absolute top-2 right-2 z-50 flex items-center gap-1.5 opacity-30 hover:opacity-80 transition-opacity">
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+          <span className="text-[9px] text-white/70">
+            {connected ? 'Đã kết nối' : 'Mất kết nối'}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,14 +1,34 @@
 'use client'
 
 import React from 'react'
-import { usePresentationStore } from '@/store/presentation-store'
+import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType } from '@/store/presentation-store'
 import { TransitionRenderer, MediaRenderer } from './media-renderer'
 import {
   Monitor,
   MonitorOff,
+  MonitorUp,
+  ChevronLeft,
   ChevronRight,
-  ChevronDown,
+  Play,
+  Pause,
+  Square,
+  Sparkles,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 export function PreviewPanel() {
   const {
@@ -19,19 +39,91 @@ export function PreviewPanel() {
     transitionType,
     transitionDuration,
     setCurrentSceneIndex,
-  } = usePresentationStore()
+    goNext,
+    goPrev,
+    goLive,
+    stopLive,
+    toggleBlackScreen,
+    setOutputWindowRef,
+    setTransitionType,
+  } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
   const nextScene = scenes[currentSceneIndex + 1]
 
   // Get PPTX slides for the slide navigator
   const pptxSlides = currentScene?.pptxFileId
-    ? scenes.filter((s) => s.pptxFileId === currentScene.pptxFileId)
+    ? scenes.filter((s: any) => s.pptxFileId === currentScene.pptxFileId)
     : []
   const showSlideNavigator = pptxSlides.length > 1
+  const currentPptxSlideIndex = pptxSlides.findIndex((s: any) => s.id === currentScene?.id)
 
-  // Find the current slide's position within the PPTX group
-  const currentPptxSlideIndex = pptxSlides.findIndex((s) => s.id === currentScene?.id)
+  // Live toggle handler
+  const handleToggleLive = async () => {
+    if (isLive) {
+      stopLive()
+      const outputWin = usePresentationStore.getState().outputWindowRef
+      if (outputWin && !outputWin.closed) {
+        outputWin.close()
+      }
+      setOutputWindowRef(null)
+    } else {
+      goLive()
+      openOutputWindow()
+    }
+  }
+
+  const openOutputWindow = () => {
+    if ('presentation' in navigator) {
+      const presentationRequest = new (navigator as any).PresentationRequest([
+        window.location.href + '#output',
+      ])
+      presentationRequest.start().then(() => {}).catch(() => fallbackOpenWindow())
+    } else {
+      fallbackOpenWindow()
+    }
+  }
+
+  const fallbackOpenWindow = () => {
+    const w = window.open(
+      '/output',
+      'presentation_output',
+      'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no'
+    )
+    if (w) {
+      setOutputWindowRef(w)
+      const checkLoaded = setInterval(() => {
+        try {
+          if (w.document && w.document.readyState === 'complete') {
+            clearInterval(checkLoaded)
+            const state = usePresentationStore.getState() as any
+            const cs = state.scenes[state.currentSceneIndex]
+            w.postMessage(
+              {
+                type: 'PRESENTATION_UPDATE',
+                payload: state.blackScreen
+                  ? { type: 'black' }
+                  : cs
+                    ? {
+                        type: 'scene',
+                        scene: cs,
+                        overlays: state.textOverlays,
+                        transitionType: state.transitionType,
+                        transitionDuration: state.transitionDuration,
+                        videoVolume: state.videoVolume,
+                        videoMuted: state.videoMuted,
+                      }
+                    : { type: 'empty' },
+              },
+              '*'
+            )
+          }
+        } catch {
+          clearInterval(checkLoaded)
+        }
+      }, 100)
+    }
+  }
 
   return (
     <div className="flex gap-2 flex-1 min-h-0 h-full">
@@ -45,13 +137,13 @@ export function PreviewPanel() {
               <span className="text-[10px] text-zinc-600">{currentPptxSlideIndex + 1}/{pptxSlides.length}</span>
             </div>
             <div className="flex-1 bg-zinc-900 rounded-lg overflow-y-auto border border-zinc-800 p-1.5 space-y-1 custom-scrollbar">
-              {pptxSlides.map((slide, idx) => {
+              {pptxSlides.map((slide: any, idx: number) => {
                 const isActive = slide.id === currentScene?.id
                 return (
                   <button
                     key={slide.id}
                     onClick={() => {
-                      const globalIdx = scenes.findIndex((s) => s.id === slide.id)
+                      const globalIdx = scenes.findIndex((s: any) => s.id === slide.id)
                       if (globalIdx >= 0) setCurrentSceneIndex(globalIdx)
                     }}
                     className={`w-full rounded-md overflow-hidden border-2 transition-all ${
@@ -101,6 +193,152 @@ export function PreviewPanel() {
             </div>
           </>
         )}
+      </div>
+
+      {/* CENTER - Control buttons between the two screens */}
+      <div className="flex flex-col items-center justify-center gap-1.5 py-4 w-10 flex-shrink-0">
+        {/* Live / Stop */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              onClick={handleToggleLive}
+              className={`h-8 w-8 p-0 rounded-full ${
+                isLive
+                  ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20'
+              }`}
+            >
+              {isLive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            {isLive ? 'Dừng chiếu' : 'Bắt đầu chiếu'}
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="w-5 h-px bg-zinc-700 my-0.5" />
+
+        {/* Previous */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={goPrev}
+              disabled={currentSceneIndex <= 0}
+              className="h-7 w-7 p-0 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-full"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            Slide trước (←)
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Slide counter */}
+        <div className="text-[9px] text-zinc-500 tabular-nums text-center leading-tight">
+          <div className="text-zinc-300 font-semibold text-[10px]">{scenes.length > 0 ? currentSceneIndex + 1 : 0}</div>
+          <div>/</div>
+          <div>{scenes.length}</div>
+        </div>
+
+        {/* Next */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={goNext}
+              disabled={currentSceneIndex >= scenes.length - 1}
+              className="h-7 w-7 p-0 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-full"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            Slide tiếp (→ / Space)
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="w-5 h-px bg-zinc-700 my-0.5" />
+
+        {/* Black screen */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={toggleBlackScreen}
+              className={`h-7 w-7 p-0 rounded-full ${
+                blackScreen
+                  ? 'text-red-400 bg-red-400/10 hover:bg-red-400/20'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-700'
+              }`}
+            >
+              <Square className="w-3.5 h-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            {blackScreen ? 'Bật hình' : 'Đen màn hình'} (B)
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Transition effect */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="relative">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-amber-400 hover:text-amber-300 hover:bg-zinc-700 rounded-full"
+                onClick={() => {
+                  const el = document.getElementById('transition-popover-trigger')
+                  el?.click()
+                }}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            Hiệu ứng chuyển cảnh
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Transition quick select - compact dropdown */}
+        <div className="w-8">
+          <Select value={transitionType} onValueChange={(v) => setTransitionType(v as TransitionType)}>
+            <SelectTrigger
+              id="transition-popover-trigger"
+              className="h-5 w-full bg-zinc-800 border-zinc-700 text-zinc-400 text-[8px] p-0 px-1 rounded"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[240px] overflow-y-auto w-[140px]">
+              {TRANSITION_GROUPS.map((group) => (
+                <SelectGroup key={group.key}>
+                  <SelectLabel className="text-[8px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1">
+                    {group.label}
+                  </SelectLabel>
+                  {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
+                    <SelectItem
+                      key={opt.value}
+                      value={opt.value}
+                      className="text-zinc-300 text-[9px] focus:bg-zinc-700 focus:text-white"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px]">{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* RIGHT panel - Main preview (ĐANG CHIẾU) */}

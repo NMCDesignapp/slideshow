@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useRef } from 'react'
-import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION, usePresentationStore } from '@/store/presentation-store'
+import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 import { MediaRenderer } from '@/components/presentation/media-renderer'
 
 interface OutputState {
@@ -10,6 +10,8 @@ interface OutputState {
   overlays?: TextOverlay[]
   transitionType?: TransitionType
   transitionDuration?: number
+  videoVolume?: number
+  videoMuted?: boolean
 }
 
 export default function OutputPage() {
@@ -19,12 +21,57 @@ export default function OutputPage() {
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   const handleFullscreen = () => {
     if (containerRef.current) {
       containerRef.current.requestFullscreen?.()
     }
   }
+
+  // === BACKGROUND PLAYBACK FIX ===
+  // Prevent the output window from throttling video when it loses focus
+  useEffect(() => {
+    // Request a wake lock to prevent the browser from throttling
+    let wakeLock: any = null
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await (navigator as any).wakeLock.request('screen')
+        }
+      } catch {
+        // Wake lock not available
+      }
+    }
+
+    requestWakeLock()
+
+    // Re-request on visibility change
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    // Force video to keep playing on visibility change
+    const forcePlayOnHidden = () => {
+      const videos = document.querySelectorAll('video')
+      videos.forEach((v) => {
+        if (v.paused && !v.ended) {
+          v.play().catch(() => {})
+        }
+      })
+    }
+    document.addEventListener('visibilitychange', forcePlayOnHidden)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      document.removeEventListener('visibilitychange', forcePlayOnHidden)
+      if (wakeLock) wakeLock.release?.()
+    }
+  }, [])
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -36,7 +83,6 @@ export default function OutputPage() {
         if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && payload.scene) {
           const tType = payload.transitionType || 'none'
           if (tType !== 'none' && prevSceneIdRef.current) {
-            // Keep the old scene temporarily
             setPrevScene(state.scene)
             setIsTransitioning(true)
 
@@ -89,31 +135,33 @@ export default function OutputPage() {
     if (transitionType === 'none' || !isTransitioning) {
       return (
         <div className="absolute inset-0">
-          <MediaRenderer scene={scene} isActive={true} />
+          <MediaRenderer
+            scene={scene}
+            isActive={true}
+            keepAlive={true}
+          />
         </div>
       )
     }
 
-    // Cross-transition: old scene exits + new scene enters
+    // Cross-transition
     return (
       <div className="absolute inset-0 overflow-hidden transition-container" style={durationVar}>
-        {/* OLD scene - exit animation (behind) */}
         {prevScene && (
           <div
             key={`exit-${prevScene.id}`}
             className={`transition-${transitionType}-exit`}
             style={{ animationDuration: duration, ...durationVar }}
           >
-            <MediaRenderer scene={prevScene} isActive={false} />
+            <MediaRenderer scene={prevScene} isActive={false} keepAlive={true} />
           </div>
         )}
-        {/* NEW scene - enter animation (on top) */}
         <div
           key={`enter-${scene.id}`}
           className={`transition-${transitionType}-enter`}
           style={{ animationDuration: duration, ...durationVar }}
         >
-          <MediaRenderer scene={scene} isActive={true} />
+          <MediaRenderer scene={scene} isActive={true} keepAlive={true} />
         </div>
       </div>
     )

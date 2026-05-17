@@ -93,6 +93,7 @@ export interface Scene {
   fontColor?: string
   bgColor?: string
   textAlign?: 'left' | 'center' | 'right'
+  /** Groups PPTX slides from the same file */
   pptxFileId?: string
   slideIndex?: number
   thumbnail?: string
@@ -120,6 +121,9 @@ interface PresentationState {
   // Transition
   transitionType: TransitionType
   transitionDuration: number
+  // Video
+  videoVolume: number
+  videoMuted: boolean
 
   // Actions
   addScene: (scene: Omit<Scene, 'id' | 'order'>) => void
@@ -139,6 +143,8 @@ interface PresentationState {
   toggleBlackScreen: () => void
   setTransitionType: (type: TransitionType) => void
   setTransitionDuration: (duration: number) => void
+  setVideoVolume: (volume: number) => void
+  setVideoMuted: (muted: boolean) => void
 }
 
 let sceneIdCounter = 0
@@ -153,6 +159,8 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   blackScreen: false,
   transitionType: 'fade',
   transitionDuration: DEFAULT_TRANSITION_DURATION,
+  videoVolume: 1,
+  videoMuted: false,
 
   addScene: (scene) => {
     const id = `scene-${++sceneIdCounter}-${Date.now()}`
@@ -249,4 +257,8 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   setTransitionType: (type) => set({ transitionType: type }),
 
   setTransitionDuration: (duration) => set({ transitionDuration: duration }),
+
+  setVideoVolume: (volume) => set({ videoVolume: volume }),
+
+  setVideoMuted: (muted) => set({ videoMuted: muted }),
 }))

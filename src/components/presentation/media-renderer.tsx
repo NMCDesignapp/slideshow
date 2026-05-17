@@ -7,17 +7,68 @@ interface MediaRendererProps {
   scene: Scene
   className?: string
   isActive?: boolean
+  /** If true, keep video playing even when tab loses focus */
+  keepAlive?: boolean
 }
 
-export function MediaRenderer({ scene, className = '', isActive = true }: MediaRendererProps) {
+export function MediaRenderer({ scene, className = '', isActive = true, keepAlive = false }: MediaRendererProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const videoVolume = usePresentationStore((s) => s.videoVolume)
+  const videoMuted = usePresentationStore((s) => s.videoMuted)
 
+  // Auto-play video when scene becomes active
   useEffect(() => {
     if (scene.type === 'video' && videoRef.current && isActive) {
       videoRef.current.currentTime = 0
       videoRef.current.play().catch(() => {})
     }
   }, [scene.id, scene.type, isActive])
+
+  // Sync volume/mute
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = videoVolume
+      videoRef.current.muted = videoMuted
+    }
+  }, [videoVolume, videoMuted])
+
+  // === BACKGROUND PLAYBACK FIX ===
+  // Keep video playing when user switches to another app/tab
+  useEffect(() => {
+    if (!keepAlive || scene.type !== 'video') return
+
+    const handleVisibilityChange = () => {
+      if (!videoRef.current) return
+      if (document.hidden) {
+        // Tab lost focus — force video to keep playing
+        if (!videoRef.current.paused) {
+          // Do nothing, video should keep playing
+        } else {
+          videoRef.current.play().catch(() => {})
+        }
+      } else {
+        // Tab regained focus — ensure still playing
+        if (videoRef.current.paused && isActive) {
+          videoRef.current.play().catch(() => {})
+        }
+      }
+    }
+
+    const handleWindowBlur = () => {
+      // Window lost focus (user switched app)
+      if (videoRef.current && videoRef.current.paused && isActive) {
+        videoRef.current.play().catch(() => {})
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('blur', handleWindowBlur)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [keepAlive, scene.type, isActive])
 
   const renderContent = () => {
     switch (scene.type) {
@@ -42,7 +93,10 @@ export function MediaRenderer({ scene, className = '', isActive = true }: MediaR
               controls={false}
               loop
               autoPlay={isActive}
-              muted={false}
+              muted={videoMuted}
+              playsInline
+              // Prevent browser from throttling video on background
+              style={{ objectFit: 'contain' as const }}
             />
           </div>
         )
@@ -105,11 +159,6 @@ export function MediaRenderer({ scene, className = '', isActive = true }: MediaR
 
 /**
  * TransitionRenderer - cross-transition that shows both old and new scene simultaneously.
- *
- * When the scene changes:
- * 1. Keep the OLD scene rendered with an "exit" animation
- * 2. Render the NEW scene on top with an "enter" animation
- * 3. After the transition duration, remove the old scene
  */
 interface TransitionRendererProps {
   scene: Scene | undefined
@@ -117,6 +166,7 @@ interface TransitionRendererProps {
   transitionDuration: number
   className?: string
   isActive?: boolean
+  keepAlive?: boolean
 }
 
 export function TransitionRenderer({
@@ -125,20 +175,17 @@ export function TransitionRenderer({
   transitionDuration,
   className = '',
   isActive = true,
+  keepAlive = false,
 }: TransitionRendererProps) {
-  // Track previous scene for cross-transition
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Detect scene change
   useEffect(() => {
     const newId = scene?.id
 
     if (prevSceneIdRef.current !== undefined && prevSceneIdRef.current !== newId && scene) {
-      // Scene changed → start transition
-      // Find the old scene from the store
       const oldScene = usePresentationStore.getState().scenes.find(
         (s) => s.id === prevSceneIdRef.current
       )
@@ -146,19 +193,17 @@ export function TransitionRenderer({
         setPrevScene(oldScene)
         setIsTransitioning(true)
 
-        // Clear after transition
         if (timeoutRef.current) clearTimeout(timeoutRef.current)
         timeoutRef.current = setTimeout(() => {
           setPrevScene(undefined)
           setIsTransitioning(false)
-        }, transitionDuration + 50) // small buffer
+        }, transitionDuration + 50)
       }
     }
 
     prevSceneIdRef.current = newId
   }, [scene?.id, transitionType, transitionDuration])
 
-  // Cleanup
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -169,43 +214,36 @@ export function TransitionRenderer({
     return <div className={`w-full h-full ${className}`} />
   }
 
-  // No transition
   if (transitionType === 'none' || !isTransitioning) {
     return (
       <div className={`w-full h-full overflow-hidden ${className}`}>
-        <div
-          key={scene.id}
-          className="w-full h-full"
-        >
-          <MediaRenderer scene={scene} isActive={isActive} />
+        <div key={scene.id} className="w-full h-full">
+          <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} />
         </div>
       </div>
     )
   }
 
-  // Cross-transition: old scene exits + new scene enters
   const duration = `${transitionDuration}ms`
   const durationVar = { '--transition-duration': duration } as React.CSSProperties
 
   return (
     <div className={`w-full h-full overflow-hidden transition-container ${className}`} style={durationVar}>
-      {/* OLD scene - exit animation (behind) */}
       {prevScene && (
         <div
           key={`exit-${prevScene.id}`}
           className={`transition-${transitionType}-exit`}
           style={{ animationDuration: duration, ...durationVar }}
         >
-          <MediaRenderer scene={prevScene} isActive={false} />
+          <MediaRenderer scene={prevScene} isActive={false} keepAlive={keepAlive} />
         </div>
       )}
-      {/* NEW scene - enter animation (on top) */}
       <div
         key={`enter-${scene.id}`}
         className={`transition-${transitionType}-enter`}
         style={{ animationDuration: duration, ...durationVar }}
       >
-        <MediaRenderer scene={scene} isActive={isActive} />
+        <MediaRenderer scene={scene} isActive={isActive} keepAlive={keepAlive} />
       </div>
     </div>
   )
@@ -215,7 +253,7 @@ export function TransitionRenderer({
  * Component that syncs with the output window for dual-screen projection
  */
 export function OutputSync() {
-  const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration } = usePresentationStore()
+  const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration, videoVolume, videoMuted } = usePresentationStore()
   const currentScene = scenes[currentSceneIndex]
 
   const getOutputContent = useCallback(() => {
@@ -230,8 +268,10 @@ export function OutputSync() {
       overlays: textOverlays,
       transitionType,
       transitionDuration,
+      videoVolume,
+      videoMuted,
     }
-  }, [isLive, blackScreen, currentScene, textOverlays, transitionType, transitionDuration])
+  }, [isLive, blackScreen, currentScene, textOverlays, transitionType, transitionDuration, videoVolume, videoMuted])
 
   useEffect(() => {
     const output = getOutputContent()

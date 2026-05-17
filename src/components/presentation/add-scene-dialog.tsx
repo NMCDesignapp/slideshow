@@ -71,13 +71,15 @@ export function AddSceneDialog() {
       try {
         if (type === 'pptx') {
           const slides = await parsePptx(file)
+          const pptxFileId = `pptx-${Date.now()}-${file.name}`
           for (const slide of slides) {
             const dataUrl = svgToDataUrl(slide.svg)
             addScene({
               type: 'pptx-slide',
-              name: `${file.name} - Slide ${slide.index}`,
+              name: `Slide ${slide.index}`,
               src: dataUrl,
               slideIndex: slide.index,
+              pptxFileId,
             })
           }
           setOpen(false)

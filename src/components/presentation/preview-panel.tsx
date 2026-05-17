@@ -1,18 +1,32 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType } from '@/store/presentation-store'
 import { TransitionRenderer, MediaRenderer } from './media-renderer'
 import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
   Monitor,
   MonitorOff,
-  MonitorUp,
   ChevronLeft,
   ChevronRight,
   Play,
   Pause,
   Square,
   Sparkles,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,6 +44,75 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
+/** Sortable filmstrip item for PPTX slides */
+function FilmstripItem({
+  scene,
+  globalIndex,
+  isActive,
+  onClick,
+  onDelete,
+}: {
+  scene: any
+  globalIndex: number
+  isActive: boolean
+  onClick: () => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: scene.id,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`relative group rounded-md overflow-hidden cursor-pointer border-2 transition-all ${
+        isActive
+          ? 'border-emerald-500 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-500/10'
+          : 'border-zinc-700 hover:border-zinc-500 opacity-60 hover:opacity-100'
+      }`}
+      onClick={onClick}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute inset-0 z-10"
+        style={{ cursor: 'grab' }}
+      />
+      <div className="relative aspect-video bg-black w-full">
+        <img
+          src={scene.src}
+          alt={scene.name || `Slide`}
+          className="w-full h-full object-contain"
+          draggable={false}
+        />
+        {isActive && (
+          <div className="absolute top-0.5 left-0.5 bg-emerald-500 text-white text-[7px] px-1 py-px rounded font-bold flex items-center gap-0.5 z-20 pointer-events-none">
+            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+            LIVE
+          </div>
+        )}
+      </div>
+      {/* Delete button on hover */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete()
+        }}
+        className="absolute top-0.5 right-0.5 z-30 opacity-0 group-hover:opacity-100 bg-red-600/80 hover:bg-red-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center transition-opacity"
+      >
+        <X className="w-2 h-2" />
+      </button>
+    </div>
+  )
+}
+
 export function PreviewPanel() {
   const {
     scenes,
@@ -46,17 +129,33 @@ export function PreviewPanel() {
     toggleBlackScreen,
     setOutputWindowRef,
     setTransitionType,
+    removeScene,
+    reorderScenes,
+    screenSize,
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
   const nextScene = scenes[currentSceneIndex + 1]
 
-  // Get PPTX slides for the slide navigator
+  // Get PPTX slides for the filmstrip - find all slides that share a pptxFileId with current scene
   const pptxSlides = currentScene?.pptxFileId
     ? scenes.filter((s: any) => s.pptxFileId === currentScene.pptxFileId)
     : []
-  const showSlideNavigator = pptxSlides.length > 1
-  const currentPptxSlideIndex = pptxSlides.findIndex((s: any) => s.id === currentScene?.id)
+  const showFilmstrip = pptxSlides.length > 1
+
+  // dnd-kit sensors for filmstrip
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const handleFilmstripDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      const oldIndex = scenes.findIndex((s: any) => s.id === active.id)
+      const newIndex = scenes.findIndex((s: any) => s.id === over.id)
+      reorderScenes(oldIndex, newIndex)
+    }
+  }
 
   // Live toggle handler
   const handleToggleLive = async () => {
@@ -88,7 +187,7 @@ export function PreviewPanel() {
     const w = window.open(
       '/output',
       'presentation_output',
-      'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no'
+      `width=${screenSize.width},height=${screenSize.height},menubar=no,toolbar=no,location=no,status=no`
     )
     if (w) {
       setOutputWindowRef(w)
@@ -115,7 +214,7 @@ export function PreviewPanel() {
                       }
                     : { type: 'empty' },
               },
-              '*'
+              window.location.origin
             )
           }
         } catch {
@@ -125,74 +224,65 @@ export function PreviewPanel() {
     }
   }
 
+  // Aspect ratio for previews
+  const aspectRatio = screenSize.width / screenSize.height
+
   return (
     <div className="flex gap-2 flex-1 min-h-0 h-full">
-      {/* LEFT panel - Slide Navigator (PPTX) or "Tiếp theo" preview */}
-      <div className="flex-[1.2] flex flex-col min-w-0">
-        {showSlideNavigator ? (
-          <>
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Slide PPTX</span>
-              <span className="text-[10px] text-zinc-600">{currentPptxSlideIndex + 1}/{pptxSlides.length}</span>
-            </div>
-            <div className="flex-1 bg-zinc-900 rounded-lg overflow-y-auto border border-zinc-800 p-1.5 space-y-1 custom-scrollbar">
-              {pptxSlides.map((slide: any, idx: number) => {
-                const isActive = slide.id === currentScene?.id
-                return (
-                  <button
-                    key={slide.id}
-                    onClick={() => {
-                      const globalIdx = scenes.findIndex((s: any) => s.id === slide.id)
-                      if (globalIdx >= 0) setCurrentSceneIndex(globalIdx)
-                    }}
-                    className={`w-full rounded-md overflow-hidden border-2 transition-all ${
-                      isActive
-                        ? 'border-emerald-500 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-500/10'
-                        : 'border-zinc-700 hover:border-zinc-500 opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <div className="relative aspect-video bg-black">
-                      <img
-                        src={slide.src}
-                        alt={slide.name || `Slide ${slide.slideIndex}`}
-                        className="w-full h-full object-contain"
+      {/* FILMSTRIP - only shown when PPTX slides present */}
+      {showFilmstrip && (
+        <div className="w-[80px] flex-shrink-0 flex flex-col min-h-0">
+          <div className="flex items-center gap-1 mb-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span className="text-[8px] font-medium text-zinc-400 uppercase tracking-wider truncate">Slide</span>
+          </div>
+          <div className="flex-1 min-h-0 bg-zinc-900 rounded-lg border border-zinc-800 p-1 overflow-y-auto custom-scrollbar">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleFilmstripDragEnd}>
+              <SortableContext items={pptxSlides.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-1">
+                  {pptxSlides.map((slide: any) => {
+                    const globalIdx = scenes.findIndex((s: any) => s.id === slide.id)
+                    const isActive = slide.id === currentScene?.id
+                    return (
+                      <FilmstripItem
+                        key={slide.id}
+                        scene={slide}
+                        globalIndex={globalIdx}
+                        isActive={isActive}
+                        onClick={() => {
+                          if (globalIdx >= 0) setCurrentSceneIndex(globalIdx)
+                        }}
+                        onDelete={() => {
+                          removeScene(slide.id)
+                        }}
                       />
-                      {isActive && (
-                        <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[8px] px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                          LIVE
-                        </div>
-                      )}
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
-                        <span className="text-[9px] text-zinc-300">Slide {idx + 1}</span>
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-2 h-2 rounded-full bg-zinc-600" />
-              <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tiếp theo</span>
-            </div>
-            <div className="flex-1 bg-black rounded-lg overflow-hidden border border-zinc-800 relative">
-              {nextScene ? (
-                <MediaRenderer scene={nextScene} isActive={false} />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-zinc-700">
-                  <div className="text-center">
-                    <MonitorOff className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-xs">Hết nội dung</p>
-                  </div>
+                    )
+                  })}
                 </div>
-              )}
+              </SortableContext>
+            </DndContext>
+          </div>
+        </div>
+      )}
+
+      {/* LEFT - "Tiếp theo" (Next) preview */}
+      <div className="flex-[1.2] flex flex-col min-w-0">
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="w-2 h-2 rounded-full bg-zinc-600" />
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tiếp theo</span>
+        </div>
+        <div className="flex-1 bg-black rounded-lg overflow-hidden border border-zinc-800 relative" style={{ aspectRatio: aspectRatio }}>
+          {nextScene ? (
+            <MediaRenderer scene={nextScene} isActive={false} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-700">
+              <div className="text-center">
+                <MonitorOff className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-xs">Hết nội dung</p>
+              </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
       {/* CENTER - Control buttons between the two screens */}

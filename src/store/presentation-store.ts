@@ -124,6 +124,8 @@ interface PresentationState {
   // Video
   videoVolume: number
   videoMuted: boolean
+  // Screen size
+  screenSize: { width: number; height: number }
 
   // Actions
   addScene: (scene: Omit<Scene, 'id' | 'order'>) => void
@@ -145,6 +147,7 @@ interface PresentationState {
   setTransitionDuration: (duration: number) => void
   setVideoVolume: (volume: number) => void
   setVideoMuted: (muted: boolean) => void
+  setScreenSize: (size: { width: number; height: number }) => void
   saveProject: () => void
   loadProject: () => void
   clearAllScenes: () => void
@@ -164,6 +167,7 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   transitionDuration: DEFAULT_TRANSITION_DURATION,
   videoVolume: 1,
   videoMuted: false,
+  screenSize: { width: 1920, height: 1080 },
 
   addScene: (scene) => {
     const id = `scene-${++sceneIdCounter}-${Date.now()}`
@@ -265,6 +269,8 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
 
   setVideoMuted: (muted) => set({ videoMuted: muted }),
 
+  setScreenSize: (size) => set({ screenSize: size }),
+
   saveProject: () => {
     const state = get()
     const projectData = {
@@ -280,6 +286,7 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
       textOverlays: state.textOverlays,
       videoVolume: state.videoVolume,
       videoMuted: state.videoMuted,
+      screenSize: state.screenSize,
       savedAt: new Date().toISOString(),
     }
     try {
@@ -302,6 +309,7 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
         textOverlays: project.textOverlays || [],
         videoVolume: project.videoVolume ?? 1,
         videoMuted: project.videoMuted ?? false,
+        screenSize: project.screenSize || { width: 1920, height: 1080 },
       })
     } catch {
       console.error('Failed to load project')

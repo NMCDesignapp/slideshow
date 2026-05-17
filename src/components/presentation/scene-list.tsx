@@ -85,7 +85,7 @@ import {
 function SceneIcon({ type }: { type: Scene['type'] }) {
   switch (type) {
     case 'image':
-      return <Image className="w-4 h-4 text-blue-400" />
+      return <Image className="w-4 h-4 text-blue-400" aria-hidden />
     case 'video':
       return <Video className="w-4 h-4 text-purple-400" />
     case 'web':
@@ -362,7 +362,7 @@ export function SceneList() {
       <ScrollArea className="flex-1">
         {scenes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
-            <Image className="w-10 h-10 mb-2 opacity-30" />
+            <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
             <p className="text-xs">Chưa có thành phần nào</p>
             <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
           </div>
@@ -499,6 +499,13 @@ export function TextOverlayPanel() {
 /**
  * Control Panel - full panel layout (integrated into the bottom editing area)
  */
+const SCREEN_PRESETS = [
+  { label: '16:9 (1920×1080)', value: '16:9', width: 1920, height: 1080 },
+  { label: '4:3 (1024×768)', value: '4:3', width: 1024, height: 768 },
+  { label: '16:10 (1680×1050)', value: '16:10', width: 1680, height: 1050 },
+  { label: 'Tuỳ chỉnh', value: 'custom', width: 0, height: 0 },
+] as const
+
 export function ControlPanel() {
   const {
     scenes,
@@ -521,10 +528,39 @@ export function ControlPanel() {
     setVideoMuted,
     loadProject,
     saveProject,
+    screenSize,
+    setScreenSize,
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
   const isVideoScene = currentScene?.type === 'video'
+
+  // Screen size preset matching
+  const [screenPreset, setScreenPreset] = useState<string>(() => {
+    const match = SCREEN_PRESETS.find((p) => p.width === screenSize?.width && p.height === screenSize?.height)
+    return match ? match.value : 'custom'
+  })
+  const [customWidth, setCustomWidth] = useState(screenSize?.width || 1920)
+  const [customHeight, setCustomHeight] = useState(screenSize?.height || 1080)
+
+  const handleScreenPresetChange = (value: string) => {
+    setScreenPreset(value)
+    const preset = SCREEN_PRESETS.find((p) => p.value === value)
+    if (preset && preset.width > 0) {
+      setScreenSize({ width: preset.width, height: preset.height })
+      setCustomWidth(preset.width)
+      setCustomHeight(preset.height)
+    }
+  }
+
+  const handleCustomSizeChange = () => {
+    const w = Math.max(320, Math.min(3840, customWidth))
+    const h = Math.max(240, Math.min(2160, customHeight))
+    setScreenSize({ width: w, height: h })
+    setCustomWidth(w)
+    setCustomHeight(h)
+    toast.success(`Kích thước màn hình: ${w}×${h}`)
+  }
 
   // === REMOTE CONNECTION INFO ===
   const [localIp, setLocalIp] = useState<string>('')
@@ -790,6 +826,55 @@ export function ControlPanel() {
           <span className="text-[9px] text-zinc-500">{videoMuted ? '0%' : `${Math.round(videoVolume * 100)}%`}</span>
         </div>
       )}
+
+      {/* Screen size selector */}
+      <div className="flex items-center gap-1.5">
+        <MonitorUp className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+        <Select value={screenPreset} onValueChange={handleScreenPresetChange}>
+          <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+            <SelectValue placeholder="Kích thước" />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-800 border-zinc-700">
+            {SCREEN_PRESETS.map((preset) => (
+              <SelectItem key={preset.value} value={preset.value} className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white">
+                {preset.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {screenPreset === 'custom' && (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              value={customWidth}
+              onChange={(e) => setCustomWidth(Number(e.target.value))}
+              className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
+              min={320}
+              max={3840}
+            />
+            <span className="text-zinc-600 text-[9px]">×</span>
+            <Input
+              type="number"
+              value={customHeight}
+              onChange={(e) => setCustomHeight(Number(e.target.value))}
+              className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
+              min={240}
+              max={2160}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleCustomSizeChange}
+              className="h-6 w-6 p-0 text-emerald-400 hover:text-emerald-300"
+            >
+              <span className="text-[9px]">✓</span>
+            </Button>
+          </div>
+        )}
+        {screenPreset !== 'custom' && (
+          <span className="text-[9px] text-zinc-600">{screenSize?.width}×{screenSize?.height}</span>
+        )}
+      </div>
 
       {/* Project save/load + remote connection row */}
       <div className="flex items-center gap-1 mt-auto">

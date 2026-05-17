@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import { usePresentationStore, SceneType, Scene } from '@/store/presentation-store'
 import { parsePptx, svgToDataUrl } from '@/lib/pptx-parser'
 import {
@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { toast } from 'sonner'
 
 type AddMode = 'image' | 'video' | 'web' | 'text' | 'pptx'
 
@@ -49,6 +50,10 @@ export function AddSceneDialog() {
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center')
   const [loading, setLoading] = useState(false)
 
+  // Selected files state for filename chips
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const resetForm = () => {
     setImageUrl('')
     setVideoUrl('')
@@ -59,18 +64,33 @@ export function AddSceneDialog() {
     setTextBgColor('#1a1a2e')
     setTextAlign('center')
     setLoading(false)
+    setSelectedFiles([])
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'pptx') => {
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files
       if (!files || files.length === 0) return
 
-      setLoading(true)
+      const newFiles = Array.from(files)
+      setSelectedFiles((prev) => [...prev, ...newFiles])
+    },
+    []
+  )
 
-      try {
-        for (const file of Array.from(files)) {
-          if (type === 'pptx') {
+  const removeSelectedFile = useCallback((index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
+  const processFiles = useCallback(async () => {
+    if (selectedFiles.length === 0) return
+
+    setLoading(true)
+    try {
+      for (const file of selectedFiles) {
+        if (mode === 'pptx') {
+          try {
             const slides = await parsePptx(file)
             const pptxFileId = `pptx-${Date.now()}-${file.name}`
             for (const slide of slides) {
@@ -83,33 +103,36 @@ export function AddSceneDialog() {
                 pptxFileId,
               })
             }
-          } else if (type === 'image') {
-            const url = URL.createObjectURL(file)
-            addScene({
-              type: 'image',
-              name: file.name,
-              src: url,
-              thumbnail: url,
-            })
-          } else if (type === 'video') {
-            const url = URL.createObjectURL(file)
-            addScene({
-              type: 'video',
-              name: file.name,
-              src: url,
-            })
+            toast.success(`Đã trích xuất ${slides.length} slide từ "${file.name}"`)
+          } catch (err: any) {
+            toast.error(err.message || `Lỗi khi đọc file "${file.name}"`)
           }
+        } else if (mode === 'image') {
+          const url = URL.createObjectURL(file)
+          addScene({
+            type: 'image',
+            name: file.name,
+            src: url,
+            thumbnail: url,
+          })
+        } else if (mode === 'video') {
+          const url = URL.createObjectURL(file)
+          addScene({
+            type: 'video',
+            name: file.name,
+            src: url,
+          })
         }
-        setOpen(false)
-        resetForm()
-      } catch (err) {
-        console.error('Error processing file:', err)
-      } finally {
-        setLoading(false)
       }
-    },
-    [addScene]
-  )
+      setOpen(false)
+      resetForm()
+    } catch (err) {
+      console.error('Error processing files:', err)
+      toast.error('Lỗi khi xử lý file')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedFiles, mode, addScene])
 
   const handleSubmit = () => {
     switch (mode) {
@@ -151,12 +174,21 @@ export function AddSceneDialog() {
   }
 
   const modeOptions: { value: AddMode; label: string; icon: React.ReactNode }[] = [
-    { value: 'image', label: 'Hình ảnh', icon: <Image className="w-4 h-4" /> },
+    { value: 'image', label: 'Hình ảnh', icon: <Image className="w-4 h-4" aria-hidden /> },
     { value: 'video', label: 'Video', icon: <Video className="w-4 h-4" /> },
     { value: 'web', label: 'Trang web', icon: <Globe className="w-4 h-4" /> },
     { value: 'text', label: 'Văn bản', icon: <Type className="w-4 h-4" /> },
     { value: 'pptx', label: 'PowerPoint', icon: <Presentation className="w-4 h-4" /> },
   ]
+
+  const getAcceptType = () => {
+    switch (mode) {
+      case 'image': return 'image/*'
+      case 'video': return 'video/*'
+      case 'pptx': return '.pptx'
+      default: return '*'
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm() }}>
@@ -176,7 +208,7 @@ export function AddSceneDialog() {
           {modeOptions.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => setMode(opt.value)}
+              onClick={() => { setMode(opt.value); setSelectedFiles([]); if (fileInputRef.current) fileInputRef.current.value = ''; }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
                 mode === opt.value
                   ? 'bg-emerald-600 text-white'
@@ -195,12 +227,34 @@ export function AddSceneDialog() {
             <div>
               <Label className="text-zinc-300">Tải file hình ảnh (chọn nhiều)</Label>
               <Input
+                ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={(e) => handleFileUpload(e, 'image')}
+                onChange={handleFileSelect}
                 className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
               />
+              {/* Filename chips */}
+              {selectedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {selectedFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="flex items-center gap-1 bg-zinc-800 border border-zinc-600 rounded-md px-2 py-1 text-[10px] text-zinc-300 group"
+                    >
+                      <Image className="w-3 h-3 text-blue-400 flex-shrink-0" aria-hidden />
+                      <span className="truncate max-w-[120px]">{file.name}</span>
+                      <span className="text-zinc-500">({(file.size / 1024).toFixed(0)}KB)</span>
+                      <button
+                        onClick={() => removeSelectedFile(idx)}
+                        className="text-zinc-500 hover:text-red-400 transition-colors ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 text-zinc-500 text-sm">
               <div className="flex-1 h-px bg-zinc-700" />
@@ -224,12 +278,34 @@ export function AddSceneDialog() {
             <div>
               <Label className="text-zinc-300">Tải file video (chọn nhiều)</Label>
               <Input
+                ref={fileInputRef}
                 type="file"
                 accept="video/*"
                 multiple
-                onChange={(e) => handleFileUpload(e, 'video')}
+                onChange={handleFileSelect}
                 className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
               />
+              {/* Filename chips */}
+              {selectedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {selectedFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="flex items-center gap-1 bg-zinc-800 border border-zinc-600 rounded-md px-2 py-1 text-[10px] text-zinc-300 group"
+                    >
+                      <Video className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                      <span className="truncate max-w-[120px]">{file.name}</span>
+                      <span className="text-zinc-500">({(file.size / (1024 * 1024)).toFixed(1)}MB)</span>
+                      <button
+                        onClick={() => removeSelectedFile(idx)}
+                        className="text-zinc-500 hover:text-red-400 transition-colors ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 text-zinc-500 text-sm">
               <div className="flex-1 h-px bg-zinc-700" />
@@ -342,12 +418,34 @@ export function AddSceneDialog() {
             <div>
               <Label className="text-zinc-300">Tải file PowerPoint</Label>
               <Input
+                ref={fileInputRef}
                 type="file"
                 accept=".pptx"
                 multiple
-                onChange={(e) => handleFileUpload(e, 'pptx')}
+                onChange={handleFileSelect}
                 className="bg-zinc-800 border-zinc-600 text-zinc-200 mt-1"
               />
+              {/* Filename chips for PPTX */}
+              {selectedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {selectedFiles.map((file, idx) => (
+                    <div
+                      key={`${file.name}-${idx}`}
+                      className="flex items-center gap-1 bg-orange-900/30 border border-orange-700/50 rounded-md px-2 py-1.5 text-[10px] text-zinc-300 group"
+                    >
+                      <Presentation className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                      <span className="truncate max-w-[140px] font-medium">{file.name}</span>
+                      <span className="text-zinc-500">({(file.size / (1024 * 1024)).toFixed(1)}MB)</span>
+                      <button
+                        onClick={() => removeSelectedFile(idx)}
+                        className="text-zinc-500 hover:text-red-400 transition-colors ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <p className="text-zinc-500 text-sm">
               Tất cả các slide trong file PPTX sẽ được trích xuất và thêm vào danh sách trình chiếu.
@@ -355,7 +453,23 @@ export function AddSceneDialog() {
           </div>
         )}
 
-        {mode !== 'pptx' && (
+        {/* Submit button */}
+        {(mode === 'pptx' || mode === 'image' || mode === 'video') ? (
+          <Button
+            onClick={processFiles}
+            disabled={loading || selectedFiles.length === 0}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Đang xử lý...
+              </span>
+            ) : (
+              `Thêm ${selectedFiles.length} file`
+            )}
+          </Button>
+        ) : (
           <Button
             onClick={handleSubmit}
             disabled={loading}

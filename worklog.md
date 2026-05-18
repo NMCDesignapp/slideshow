@@ -98,3 +98,26 @@ Stage Summary:
 - New Vercel URL: https://slideshow-gvku2s8k5-charlienc1604-5790s-projects.vercel.app
 - GitHub repo: NMCDesignapp/slideshow
 - This is the active deployment URL going forward
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix UI issues - 16:9 aspect ratio, detail panel, compact boxes, rearrange controls
+
+Work Log:
+- Analyzed uploaded screenshot with VLM to understand layout issues
+- Read all relevant source files (page.tsx, preview-panel.tsx, scene-list.tsx)
+- Fixed 16:9 aspect ratio display: screens now use flexbox with aspectRatio style on inner container, properly centered within available height
+- Fixed PPTX group detail panel: pptxGroups Map is now built BEFORE selectedScene lookup, so selectedScene correctly falls back to first slide when selectedItemId is a groupId
+- Reduced box height by ~50%: replaced aspect-video thumbnail with compact single-row layout (mini thumbnail 8x5px, inline number/icon/name/delete)
+- Changed grid from 3 columns to 4 columns for compact items
+- Made control buttons more compact: h-6/w-6 buttons, smaller text, tighter spacing
+- Reduced padding/margins throughout (p-2→p-1.5, gap-2→gap-1)
+- Navigation center column made more compact (h-8→h-8, gap-1.5)
+- Page layout adjusted: scene list 55%, controls 45%, reduced padding
+
+Stage Summary:
+- 16:9 screens now properly fill their containers
+- Clicking PPTX group box now correctly shows PptxDetailPanel
+- Scene list boxes are now ~50% shorter (single-row compact layout)
+- Controls are more compact and organized
+- Build passes successfully

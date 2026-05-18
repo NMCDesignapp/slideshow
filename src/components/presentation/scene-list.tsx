@@ -185,11 +185,11 @@ function SortableGridItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative rounded-lg overflow-hidden cursor-pointer transition-all group border-2 ${
+      className={`relative rounded-md overflow-hidden cursor-pointer transition-all group border ${
         isCurrent
-          ? 'border-red-500 ring-1 ring-red-500/30 shadow-lg shadow-red-500/10'
+          ? 'border-red-500 ring-1 ring-red-500/30'
           : isNext
-            ? 'border-emerald-500 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-500/10'
+            ? 'border-emerald-500 ring-1 ring-emerald-500/30'
             : 'border-zinc-700 hover:border-zinc-500'
       }`}
       onClick={onClick}
@@ -198,67 +198,64 @@ function SortableGridItem({
       <div
         {...attributes}
         {...listeners}
-        className="absolute top-0.5 left-0.5 z-20 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 bg-zinc-800/80 rounded p-0.5 transition-opacity"
+        className="absolute top-0 left-0 z-20 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 bg-zinc-800/80 rounded-br p-px transition-opacity"
       >
-        <GripVertical className="w-3 h-3 text-zinc-400" />
+        <GripVertical className="w-2.5 h-2.5 text-zinc-400" />
       </div>
 
-      {/* Thumbnail area */}
-      <div className="aspect-video bg-zinc-800 relative overflow-hidden">
-        {thumbnailSrc ? (
-          <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
-        ) : scene.type === 'text' ? (
-          <div className="w-full h-full flex items-center justify-center p-1" style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}>
-            <p className="text-[7px] text-center truncate" style={{ color: scene.fontColor || '#fff', fontSize: `${Math.min(scene.fontSize || 48, 10)}px` }}>
-              {scene.content}
-            </p>
-          </div>
-        ) : scene.type === 'web' ? (
-          <div className="w-full h-full flex items-center justify-center bg-cyan-900/20">
-            <Globe className="w-6 h-6 text-cyan-400/40" />
-          </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <SceneIcon type={scene.type} size={20} />
-          </div>
-        )}
+      {/* Compact layout: thumbnail left, info right - single row */}
+      <div className="flex items-center gap-1 px-1 py-0.5 bg-zinc-900/90">
+        {/* Order number */}
+        <span className={`text-[8px] font-bold min-w-[12px] text-center rounded px-0.5 flex-shrink-0 ${
+          isCurrent ? 'text-red-400 bg-red-900/30' : isNext ? 'text-emerald-400 bg-emerald-900/30' : 'text-zinc-500'
+        }`}>
+          {displayIndex}
+        </span>
 
-        {/* Status badge */}
-        {isCurrent && (
-          <div className="absolute top-0.5 right-0.5 bg-red-500 text-white text-[7px] px-1 py-px rounded font-bold z-10 flex items-center gap-0.5">
-            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
-            LIVE
-          </div>
-        )}
-        {isNext && !isCurrent && (
-          <div className="absolute top-0.5 right-0.5 bg-emerald-500 text-white text-[7px] px-1 py-px rounded font-bold z-10">
-            NEXT
-          </div>
-        )}
-      </div>
+        {/* Mini thumbnail */}
+        <div className="w-8 h-5 rounded-sm bg-zinc-800 relative overflow-hidden flex-shrink-0">
+          {thumbnailSrc ? (
+            <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
+          ) : scene.type === 'text' ? (
+            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}>
+              <Type className="w-2.5 h-2.5 text-yellow-400/60" />
+            </div>
+          ) : scene.type === 'web' ? (
+            <div className="w-full h-full flex items-center justify-center bg-cyan-900/20">
+              <Globe className="w-2.5 h-2.5 text-cyan-400/40" />
+            </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <SceneIcon type={scene.type} size={8} />
+            </div>
+          )}
 
-      {/* Info area */}
-      <div className="p-1 bg-zinc-900/80">
-        <div className="flex items-center gap-1">
-          {/* Order number - editable */}
-          <span className={`text-[9px] font-bold min-w-[14px] text-center rounded px-0.5 ${
-            isCurrent ? 'text-red-400 bg-red-900/30' : isNext ? 'text-emerald-400 bg-emerald-900/30' : 'text-zinc-500'
-          }`}>
-            {displayIndex}
-          </span>
-          <SceneIcon type={scene.type} size={10} />
-          <p className="text-[9px] text-zinc-300 truncate flex-1">{scene.name}</p>
-          {/* Delete button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity flex-shrink-0"
-          >
-            <Trash2 className="w-2.5 h-2.5" />
-          </button>
+          {/* Status badge */}
+          {isCurrent && (
+            <div className="absolute top-0 right-0 bg-red-500 text-white text-[5px] px-0.5 rounded-bl font-bold z-10 leading-tight">
+              LIVE
+            </div>
+          )}
+          {isNext && !isCurrent && (
+            <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[5px] px-0.5 rounded-bl font-bold z-10 leading-tight">
+              NEXT
+            </div>
+          )}
         </div>
+
+        {/* Name */}
+        <p className="text-[8px] text-zinc-300 truncate flex-1 leading-tight">{scene.name}</p>
+
+        {/* Delete button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity flex-shrink-0"
+        >
+          <Trash2 className="w-2.5 h-2.5" />
+        </button>
       </div>
     </div>
   )
@@ -782,9 +779,6 @@ export function SceneList() {
     }
   }, [scenes, reorderScenes])
 
-  // Get the selected scene
-  const selectedScene = selectedItemId ? scenes.find((s) => s.id === selectedItemId) : null
-
   // Build the display list (group PPTX slides together in the grid)
   // For the grid, each item (including PPTX groups) is one box
   const pptxGroups = new Map<string, { fileName: string; slides: Scene[]; firstIndex: number }>()
@@ -803,6 +797,10 @@ export function SceneList() {
       }
     }
   }
+
+  // Get the selected scene - for PPTX groups, use the first slide
+  const selectedScene = selectedItemId ? scenes.find((s) => s.id === selectedItemId) || 
+    (pptxGroups.has(selectedItemId) ? pptxGroups.get(selectedItemId)!.slides[0] : null) : null
 
   // Build render items for the grid
   const gridItems: Array<{
@@ -944,7 +942,7 @@ export function SceneList() {
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={visibleSceneIds} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-4 gap-1">
                 {gridItems.map((item) => {
                   if (item.type === 'pptx-group' && item.groupId) {
                     const firstSlide = item.groupFirstSlide
@@ -1508,30 +1506,30 @@ export function ControlPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-1.5">
+    <div className="flex flex-col h-full gap-1 overflow-y-auto">
       <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
         Điều khiển
       </h3>
 
-      {/* Navigation */}
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={goPrev} disabled={currentSceneIndex <= 0} className="text-zinc-400 hover:text-white h-7 w-7 p-0">
-          <ChevronLeft className="w-4 h-4" />
+      {/* Projection buttons - compact row */}
+      <div className="flex items-center gap-1">
+        <Button size="sm" variant="ghost" onClick={goPrev} disabled={currentSceneIndex <= 0} className="text-zinc-400 hover:text-white h-6 w-6 p-0">
+          <ChevronLeft className="w-3.5 h-3.5" />
         </Button>
-        <span className="text-xs text-zinc-400 min-w-[42px] text-center tabular-nums">
+        <span className="text-[10px] text-zinc-400 min-w-[32px] text-center tabular-nums font-mono">
           {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : '0/0'}
         </span>
-        <Button size="sm" variant="ghost" onClick={goNext} disabled={currentSceneIndex >= scenes.length - 1} className="text-zinc-400 hover:text-white h-7 w-7 p-0">
-          <ChevronRight className="w-4 h-4" />
+        <Button size="sm" variant="ghost" onClick={goNext} disabled={currentSceneIndex >= scenes.length - 1} className="text-zinc-400 hover:text-white h-6 w-6 p-0">
+          <ChevronRight className="w-3.5 h-3.5" />
         </Button>
 
-        <div className="w-px h-5 bg-zinc-700 mx-0.5" />
+        <div className="w-px h-4 bg-zinc-700 mx-0.5" />
 
         {/* Black screen */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button size="sm" variant="ghost" onClick={toggleBlackScreen} className={`h-7 w-7 p-0 ${blackScreen ? 'text-red-400' : 'text-zinc-400'}`}>
-              <Square className="w-4 h-4" />
+            <Button size="sm" variant="ghost" onClick={toggleBlackScreen} className={`h-6 w-6 p-0 ${blackScreen ? 'text-red-400' : 'text-zinc-400'}`}>
+              <Square className="w-3 h-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">

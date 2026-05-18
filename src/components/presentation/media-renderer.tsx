@@ -75,12 +75,7 @@ export function setVideoPaused(paused: boolean) {
       }, window.location.origin)
     }
   } catch { /* ignore */ }
-  // Also send via API for remote devices
-  fetch('/api/sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: paused ? 'VIDEO_PAUSE' : 'VIDEO_PLAY' }),
-  }).catch(() => {})
+
 }
 
 export function isVideoPaused() {
@@ -487,7 +482,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
  * Component that syncs with the output window for dual-screen projection
  * Supports both:
  * - LOCAL: postMessage to popup window (same device, dual monitor)
- * - REMOTE: POST to /api/sync for cross-device (SSE to output page)
+ * - BroadcastChannel (reliable, works even if popup blocked)
  * Now includes per-slide transition overrides
  */
 export function OutputSync() {
@@ -527,13 +522,6 @@ export function OutputSync() {
         }, window.location.origin)
       }
     } catch { /* Window may be closed */ }
-
-    // MODE 3: Remote sync (POST to API for cross-device SSE)
-    fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(output),
-    }).catch(() => { /* Network error, ignore */ })
   }, [getOutputContent])
 
   return null

@@ -33,7 +33,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ChevronRight as ChevronRightIcon,
   Square,
   Play,
   Pause,
@@ -49,9 +48,6 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Bold,
-  Italic,
-  Underline,
   MonitorUp,
   Maximize2,
   GripVertical,
@@ -60,7 +56,6 @@ import {
   FolderOpen,
   Volume2,
   VolumeX,
-  Check,
   Copy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -630,8 +625,8 @@ export function SceneList() {
   } = usePresentationStore()
 
   const [isDragOver, setIsDragOver] = useState(false)
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { selectedSceneId, setSelectedSceneId } = usePresentationStore()
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -746,14 +741,14 @@ export function SceneList() {
   // Handle clicking a grid item → set it as NEXT, or toggle off if same
   const handleItemClick = useCallback((index: number) => {
     const clickedId = scenes[index]?.id || null
-    if (selectedItemId === clickedId) {
+    if (selectedSceneId === clickedId) {
       // Toggle off
-      setSelectedItemId(null)
+      setSelectedSceneId(null)
     } else {
       selectAsNext(index)
-      setSelectedItemId(clickedId)
+      setSelectedSceneId(clickedId)
     }
-  }, [selectAsNext, scenes, selectedItemId])
+  }, [selectAsNext, scenes, selectedSceneId, setSelectedSceneId])
 
   // Handle editing order number
   const handleOrderChange = useCallback((sceneId: string, newOrder: number) => {
@@ -769,11 +764,11 @@ export function SceneList() {
     for (const slide of groupSlides) {
       removeScene(slide.id)
     }
-    if (selectedItemId && groupSlides.some(s => s.id === selectedItemId)) {
-      setSelectedItemId(null)
+    if (selectedSceneId && groupSlides.some(s => s.id === selectedSceneId)) {
+      setSelectedSceneId(null)
     }
     toast.success(`Đã xoá ${groupSlides.length} slide`)
-  }, [scenes, removeScene, selectedItemId])
+  }, [scenes, removeScene, selectedSceneId, setSelectedSceneId])
 
   // Move slide within PPTX group
   const handleMoveSlide = useCallback((slideId: string, direction: 'up' | 'down') => {
@@ -805,8 +800,8 @@ export function SceneList() {
   }
 
   // Get the selected scene - for PPTX groups, use the first slide
-  const selectedScene = selectedItemId ? scenes.find((s) => s.id === selectedItemId) || 
-    (pptxGroups.has(selectedItemId) ? pptxGroups.get(selectedItemId)!.slides[0] : null) : null
+  const selectedScene = selectedSceneId ? scenes.find((s) => s.id === selectedSceneId) || 
+    (pptxGroups.has(selectedSceneId) ? pptxGroups.get(selectedSceneId)!.slides[0] : null) : null
 
   // Build render items for the grid
   const gridItems: Array<{
@@ -896,7 +891,7 @@ export function SceneList() {
                   onClick={() => {
                     if (confirm(`Xoá tất cả ${scenes.length} thành phần?`)) {
                       clearAllScenes()
-                      setSelectedItemId(null)
+                      setSelectedSceneId(null)
                       toast.success('Đã xoá tất cả thành phần')
                     }
                   }}
@@ -952,8 +947,8 @@ export function SceneList() {
                 {gridItems.map((item) => {
                   if (item.type === 'pptx-group' && item.groupId) {
                     const firstSlide = item.groupFirstSlide
-                    const isSelected = selectedItemId === item.groupId || 
-                      (firstSlide && pptxGroups.get(item.groupId)?.slides.some(s => s.id === selectedItemId))
+                    const isSelected = selectedSceneId === item.groupId || 
+                      (firstSlide && pptxGroups.get(item.groupId)?.slides.some(s => s.id === selectedSceneId))
                     const isNext = scenes.findIndex((s) => s.pptxFileId === item.groupId) === nextSceneIndex ||
                       (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === nextSceneIndex)
                     const isCurrent = scenes.findIndex((s) => s.pptxFileId === item.groupId) === currentSceneIndex ||
@@ -969,11 +964,11 @@ export function SceneList() {
                         onClick={() => {
                           const idx = scenes.findIndex((s) => s.pptxFileId === item.groupId)
                           if (idx >= 0) {
-                            if (selectedItemId === item.groupId) {
-                              setSelectedItemId(null)
+                            if (selectedSceneId === item.groupId) {
+                              setSelectedSceneId(null)
                             } else {
                               selectAsNext(idx)
-                              setSelectedItemId(item.groupId)
+                              setSelectedSceneId(item.groupId)
                             }
                           }
                         }}
@@ -996,7 +991,7 @@ export function SceneList() {
                         onClick={() => handleItemClick(item.sceneIndex)}
                         onDelete={() => {
                           removeScene(item.scene!.id)
-                          if (selectedItemId === item.scene!.id) setSelectedItemId(null)
+                          if (selectedSceneId === item.scene!.id) setSelectedSceneId(null)
                           toast.success(`Đã xoá "${item.scene!.name}"`)
                         }}
                       />
@@ -1010,52 +1005,113 @@ export function SceneList() {
           </DndContext>
         )}
       </ScrollArea>
+    </div>
+  )
+}
 
-      {/* Detail panel - fixed section at bottom, always visible when selected */}
-      {selectedScene && (
-        <div className="mt-1 border-t border-zinc-800 pt-1 overflow-y-auto max-h-[200px]" style={{ transition: 'max-height 0.2s ease' }}>
-          {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
-            <PptxDetailPanel
-              scenes={scenes}
-              pptxGroupId={selectedScene.pptxFileId}
-              currentSceneIndex={currentSceneIndex}
-              nextSceneIndex={nextSceneIndex}
-              onSelectSlide={(idx) => selectAsNext(idx)}
-              onDeleteSlide={(id) => { removeScene(id); toast.success('Đã xoá slide') }}
-              onDeleteGroup={() => { if (selectedScene.pptxFileId) deletePptxGroup(selectedScene.pptxFileId) }}
-              onMoveSlide={handleMoveSlide}
-            />
-          )}
-          {selectedScene.type === 'image' && (
-            <ImageDetailPanel
-              scene={selectedScene}
-              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
-              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá ảnh') }}
-            />
-          )}
-          {selectedScene.type === 'video' && (
-            <VideoDetailPanel
-              scene={selectedScene}
-              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
-              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá video') }}
-            />
-          )}
-          {selectedScene.type === 'text' && (
-            <TextDetailPanel
-              scene={selectedScene}
-              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
-              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá chữ') }}
-            />
-          )}
-          {selectedScene.type === 'web' && (
-            <WebDetailPanel
-              scene={selectedScene}
-              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
-              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá web') }}
-            />
-          )}
-        </div>
-      )}
+// === SCENE DETAIL PANEL (extracted, uses store) ===
+export function SceneDetailPanel() {
+  const { scenes, selectedSceneId, setSelectedSceneId, currentSceneIndex, nextSceneIndex, selectAsNext, removeScene, updateScene, reorderScenes } = usePresentationStore()
+  const selectedScene = selectedSceneId ? scenes.find(s => s.id === selectedSceneId) : null
+
+  // Also handle PPTX group selection
+  const pptxGroups = new Map<string, { fileName: string; slides: Scene[]; firstIndex: number }>()
+  for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i]
+    if (scene.type === 'pptx-slide' && scene.pptxFileId) {
+      const group = pptxGroups.get(scene.pptxFileId)
+      if (group) {
+        group.slides.push(scene)
+      } else {
+        pptxGroups.set(scene.pptxFileId, {
+          fileName: scene.pptxFileName || scene.pptxFileId,
+          slides: [scene],
+          firstIndex: i,
+        })
+      }
+    }
+  }
+
+  if (!selectedScene) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+        <Eye className="w-8 h-8 mb-2 opacity-30" />
+        <p className="text-[10px]">Chọn mục để xem chi tiết</p>
+      </div>
+    )
+  }
+
+  const handleDeletePptxGroup = () => {
+    if (!selectedScene.pptxFileId) return
+    const groupSlides = scenes.filter(s => s.pptxFileId === selectedScene.pptxFileId)
+    for (const slide of groupSlides) removeScene(slide.id)
+    setSelectedSceneId(null)
+    toast.success(`Đã xoá ${groupSlides.length} slide`)
+  }
+
+  const handleMoveSlide = (slideId: string, direction: 'up' | 'down') => {
+    const idx = scenes.findIndex(s => s.id === slideId)
+    if (idx < 0) return
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (targetIdx >= 0 && targetIdx < scenes.length) {
+      reorderScenes(idx, targetIdx)
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <SceneIcon type={selectedScene.type} size={14} />
+        <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider flex-1 truncate">
+          {selectedScene.name}
+        </h3>
+        <Button size="sm" variant="ghost" onClick={() => setSelectedSceneId(null)} className="text-zinc-500 hover:text-white h-5 w-5 p-0">
+          <X className="w-3 h-3" />
+        </Button>
+      </div>
+      <ScrollArea className="flex-1">
+        {/* Detail panels */}
+        {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
+          <PptxDetailPanel
+            scenes={scenes}
+            pptxGroupId={selectedScene.pptxFileId}
+            currentSceneIndex={currentSceneIndex}
+            nextSceneIndex={nextSceneIndex}
+            onSelectSlide={(idx) => selectAsNext(idx)}
+            onDeleteSlide={(id) => { removeScene(id); toast.success('Đã xoá slide') }}
+            onDeleteGroup={handleDeletePptxGroup}
+            onMoveSlide={handleMoveSlide}
+          />
+        )}
+        {selectedScene.type === 'image' && (
+          <ImageDetailPanel
+            scene={selectedScene}
+            onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+            onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá ảnh') }}
+          />
+        )}
+        {selectedScene.type === 'video' && (
+          <VideoDetailPanel
+            scene={selectedScene}
+            onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+            onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá video') }}
+          />
+        )}
+        {selectedScene.type === 'text' && (
+          <TextDetailPanel
+            scene={selectedScene}
+            onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+            onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá chữ') }}
+          />
+        )}
+        {selectedScene.type === 'web' && (
+          <WebDetailPanel
+            scene={selectedScene}
+            onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+            onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá web') }}
+          />
+        )}
+      </ScrollArea>
     </div>
   )
 }
@@ -1070,6 +1126,8 @@ const OVERLAY_TEMPLATES = [
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.75)',
     position: 'bottom' as const,
+    animation: 'static' as const,
+    scrollDuration: 15,
   },
   {
     id: 'scrolling-text',
@@ -1079,6 +1137,8 @@ const OVERLAY_TEMPLATES = [
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.7)',
     position: 'bottom' as const,
+    animation: 'scroll' as const,
+    scrollDuration: 15,
   },
   {
     id: 'center-title',
@@ -1088,6 +1148,8 @@ const OVERLAY_TEMPLATES = [
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.6)',
     position: 'center' as const,
+    animation: 'static' as const,
+    scrollDuration: 15,
   },
   {
     id: 'corner-notify',
@@ -1097,6 +1159,19 @@ const OVERLAY_TEMPLATES = [
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.65)',
     position: 'top' as const,
+    animation: 'static' as const,
+    scrollDuration: 15,
+  },
+  {
+    id: 'scrolling-top',
+    label: 'Chạy chữ trên',
+    icon: '📢',
+    fontSize: 32,
+    fontColor: '#ffffff',
+    bgColor: 'rgba(200,0,0,0.8)',
+    position: 'top' as const,
+    animation: 'scroll' as const,
+    scrollDuration: 20,
   },
 ]
 
@@ -1112,6 +1187,8 @@ export function TextOverlayPanel() {
   const [formFontColor, setFormFontColor] = useState('#ffffff')
   const [formBgColor, setFormBgColor] = useState('rgba(0,0,0,0.7)')
   const [formPosition, setFormPosition] = useState<'top' | 'bottom' | 'center'>('bottom')
+  const [formAnimation, setFormAnimation] = useState<'static' | 'scroll' | 'typewriter'>('static')
+  const [formScrollDuration, setFormScrollDuration] = useState(15)
 
   const resetForm = () => {
     setNewText('')
@@ -1119,6 +1196,8 @@ export function TextOverlayPanel() {
     setFormFontColor('#ffffff')
     setFormBgColor('rgba(0,0,0,0.7)')
     setFormPosition('bottom')
+    setFormAnimation('static')
+    setFormScrollDuration(15)
     setShowForm(false)
   }
 
@@ -1131,6 +1210,8 @@ export function TextOverlayPanel() {
       fontColor: formFontColor,
       bgColor: formBgColor,
       position: formPosition,
+      animation: formAnimation,
+      scrollDuration: formScrollDuration,
     })
     resetForm()
     toast.success('Đã thêm thông báo')
@@ -1141,6 +1222,8 @@ export function TextOverlayPanel() {
     setFormFontColor(template.fontColor)
     setFormBgColor(template.bgColor)
     setFormPosition(template.position)
+    setFormAnimation(template.animation || 'static')
+    setFormScrollDuration(template.scrollDuration || 15)
     if (!showForm) setShowForm(true)
   }
 
@@ -1225,6 +1308,32 @@ export function TextOverlayPanel() {
               />
             </div>
           </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[8px] text-zinc-500">Kiểu</span>
+            <Select value={formAnimation} onValueChange={(v) => setFormAnimation(v as 'static' | 'scroll' | 'typewriter')}>
+              <SelectTrigger className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-800 border-zinc-600">
+                <SelectItem value="static" className="text-[9px]">Tĩnh</SelectItem>
+                <SelectItem value="scroll" className="text-[9px]">Chạy chữ</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {formAnimation === 'scroll' && (
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] text-zinc-500">Tốc độ</span>
+              <Input
+                type="number"
+                value={formScrollDuration}
+                onChange={(e) => setFormScrollDuration(Number(e.target.value))}
+                className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 w-12"
+                min={5}
+                max={60}
+              />
+              <span className="text-[8px] text-zinc-500">giây</span>
+            </div>
+          )}
           <div className="flex gap-1">
             <Button size="sm" onClick={handleAdd} className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2">
               Thêm
@@ -1249,7 +1358,7 @@ export function TextOverlayPanel() {
                   {overlay.visible ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-zinc-500" />}
                 </button>
                 <span className="text-[10px] text-zinc-300 truncate flex-1">{overlay.text}</span>
-                <span className="text-[8px] text-zinc-600">{overlay.fontSize}px</span>
+                <span className="text-[8px] text-zinc-600">{overlay.fontSize}px {overlay.animation === 'scroll' ? '↔' : ''}</span>
                 <button onClick={() => removeTextOverlay(overlay.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -1400,36 +1509,7 @@ export function ControlPanel() {
     toast.success(`Kích thước: ${w}×${h}`)
   }
 
-  // === REMOTE CONNECTION ===
-  const [localIp, setLocalIp] = useState<string>(typeof window !== 'undefined' ? window.location.hostname : '')
-  const [showRemoteInfo, setShowRemoteInfo] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    try {
-      const pc = new RTCPeerConnection({ iceServers: [] })
-      pc.createDataChannel('')
-      pc.createOffer().then((offer) => pc.setLocalDescription(offer))
-      pc.onicecandidate = (e) => {
-        if (!e.candidate) return
-        const match = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/)
-        if (match && match[1] !== '0.0.0.0') {
-          setLocalIp(match[1])
-          pc.close()
-        }
-      }
-    } catch { /* WebRTC not available */ }
-  }, [])
-
-  const outputUrl = localIp ? `http://${localIp}:${window.location.port || 3000}/output` : ''
-
-  const copyUrl = () => {
-    if (outputUrl) {
-      navigator.clipboard.writeText(outputUrl).catch(() => {})
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
+  // === REMOTE CONNECTION === (removed - no longer using SSE/online projection)
 
   // === PROJECTION BUTTONS ===
   const [showProjectionGuide, setShowProjectionGuide] = useState(false)
@@ -1467,22 +1547,6 @@ export function ControlPanel() {
     
     // Always show the guide
     setShowProjectionGuide(true)
-  }
-
-  const handleStartOnlineProjection = async () => {
-    if (scenes.length === 0) {
-      toast.error('Chưa có nội dung để chiếu!')
-      return
-    }
-    goLive()
-    setShowRemoteInfo(true)
-
-    // Also try to open local output
-    const w = window.open('/output', 'showflow_output', 'width=1920,height=1080')
-    if (w) {
-      setOutputWindowRef(w)
-    }
-    toast.success('Đã bật chiếu online')
   }
 
   const handleStopAll = () => {
@@ -1660,10 +1724,7 @@ export function ControlPanel() {
       {/* Section: Dự án */}
       <div className="space-y-1">
         <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Dự án</span>
-        <div className="grid grid-cols-3 gap-1">
-          <Button size="sm" onClick={handleStartOnlineProjection} className="bg-cyan-600 hover:bg-cyan-700 text-white text-[9px] h-7">
-            Online
-          </Button>
+        <div className="grid grid-cols-2 gap-1">
           <Button size="sm" variant="ghost" onClick={saveProject} className="text-zinc-400 hover:text-white text-[9px] h-7 border border-zinc-700">
             <Save className="w-3 h-3 mr-1" /> Lưu
           </Button>
@@ -1672,24 +1733,6 @@ export function ControlPanel() {
           </Button>
         </div>
       </div>
-
-      {/* Remote info */}
-      {showRemoteInfo && isLive && (
-        <div className="p-1.5 bg-cyan-900/20 border border-cyan-700/30 rounded-md space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[8px] text-cyan-300 font-medium">URL chiếu online:</span>
-            <button onClick={() => setShowRemoteInfo(false)} className="text-zinc-500 hover:text-zinc-300">
-              <X className="w-2.5 h-2.5" />
-            </button>
-          </div>
-          <div className="flex items-center gap-1">
-            <Input readOnly value={outputUrl} className="h-5 bg-zinc-900 border-zinc-600 text-cyan-300 text-[8px] px-1 flex-1" />
-            <Button size="sm" onClick={copyUrl} className="h-5 text-[8px] px-1.5 bg-cyan-700 hover:bg-cyan-600">
-              {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Projection Guide - always show when live */}
       {isLive && (

@@ -119,6 +119,10 @@ export interface TextOverlay {
   fontColor: string
   bgColor: string
   position: 'top' | 'bottom' | 'center'
+  /** Animation type for this overlay */
+  animation?: 'static' | 'scroll' | 'typewriter'
+  /** Scroll speed in seconds (for scroll animation) */
+  scrollDuration?: number
 }
 
 interface PresentationState {
@@ -139,6 +143,9 @@ interface PresentationState {
   videoMuted: boolean
   // Screen size
   screenSize: { width: number; height: number }
+  // Selected scene for detail panel
+  selectedSceneId: string | null
+  setSelectedSceneId: (id: string | null) => void
 
   // Actions
   addScene: (scene: Omit<Scene, 'id' | 'order'>) => void
@@ -188,6 +195,8 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   videoVolume: 1,
   videoMuted: false,
   screenSize: { width: 1920, height: 1080 },
+  selectedSceneId: null,
+  setSelectedSceneId: (id) => set({ selectedSceneId: id }),
 
   addScene: (scene) => {
     const id = `scene-${++sceneIdCounter}-${Date.now()}`

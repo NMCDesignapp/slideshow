@@ -468,3 +468,78 @@
   80%  { opacity: 0.1; transform: translate(-1px, 1px); }
   100% { opacity: 0; transform: translate(0px, 0px); filter: hue-rotate(0deg); }
 }
+
+/* ========================================
+   Overlay Animations - Entrance, Exit, Ticker
+   ======================================== */
+
+/* Scrolling ticker animation */
+@keyframes ticker-scroll {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.overlay-ticker {
+  display: inline-block;
+  white-space: nowrap;
+  animation: ticker-scroll var(--ticker-duration, 15s) linear infinite;
+}
+
+.overlay-ticker-paused {
+  animation-play-state: paused;
+}
+
+/* Overlay entrance animations */
+@keyframes overlay-slide-in-bottom {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes overlay-slide-in-top {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlay-slide-out-bottom {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes overlay-slide-out-top {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-100%); opacity: 0; }
+}
+
+@keyframes overlay-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.overlay-enter-bottom {
+  animation: overlay-slide-in-bottom 0.4s ease-out both;
+}
+
+.overlay-enter-top {
+  animation: overlay-slide-in-top 0.4s ease-out both;
+}
+
+.overlay-enter-center {
+  animation: overlay-fade-in 0.4s ease-out both;
+}
+
+.overlay-exit-bottom {
+  animation: overlay-slide-out-bottom 0.3s ease-in both;
+}
+
+.overlay-exit-top {
+  animation: overlay-slide-out-top 0.3s ease-in both;
+}
+
+.overlay-exit-center {
+  animation: overlay-fade-out 0.3s ease-in both;
+}

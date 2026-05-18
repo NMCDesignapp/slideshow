@@ -46,7 +46,7 @@ function stopOutputAudioKeepAlive() {
 }
 
 /**
- * Optimized overlay renderer
+ * Optimized overlay renderer with animation support
  */
 const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: TextOverlay[] }) {
   const visibleOverlays = overlays.filter((o) => o.visible)
@@ -61,21 +61,37 @@ const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: 
           center: 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
         }
 
+        const enterClass: Record<string, string> = {
+          top: 'overlay-enter-top',
+          bottom: 'overlay-enter-bottom',
+          center: 'overlay-enter-center',
+        }
+
+        const isScrolling = overlay.animation === 'scroll'
+        const scrollDuration = overlay.scrollDuration || 15
+
         return (
           <div
             key={overlay.id}
-            className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4 z-50`}
+            className={`absolute ${positionClasses[overlay.position] || positionClasses.bottom} p-4 z-50 ${enterClass[overlay.position] || 'overlay-enter-bottom'}`}
           >
             <div
-              className="px-6 py-3 rounded-lg inline-block max-w-full"
+              className={`px-6 py-3 rounded-lg inline-block max-w-full overflow-hidden`}
               style={{
                 backgroundColor: overlay.bgColor || 'rgba(0,0,0,0.7)',
                 fontSize: `${overlay.fontSize || 32}px`,
                 color: overlay.fontColor || '#ffffff',
                 fontFamily: 'Arial, sans-serif',
+                ...(isScrolling ? { '--ticker-duration': `${scrollDuration}s` } as React.CSSProperties : {}),
               }}
             >
-              {overlay.text}
+              {isScrolling ? (
+                <span className="overlay-ticker" style={{ '--ticker-duration': `${scrollDuration}s` } as React.CSSProperties}>
+                  {overlay.text} &nbsp;&nbsp;&nbsp; {overlay.text} &nbsp;&nbsp;&nbsp; {overlay.text}
+                </span>
+              ) : (
+                overlay.text
+              )}
             </div>
           </div>
         )
@@ -285,67 +301,6 @@ export default function OutputPage() {
 
     return () => {
       window.removeEventListener('message', handler)
-    }
-  }, [handleStateUpdate])
-
-  // === MODE 3: SSE (for cross-device / remote) ===
-  useEffect(() => {
-    // Only try SSE if no BroadcastChannel and not opened as popup
-    if (window.opener) return
-    // Skip SSE if BroadcastChannel is available (it's more reliable)
-    try {
-      const testBC = new BroadcastChannel('showflow-sync-test')
-      testBC.close()
-      return // BroadcastChannel available, no need for SSE
-    } catch {
-      // BroadcastChannel not available, use SSE
-    }
-
-    let eventSource: EventSource | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-
-    const connect = () => {
-      try {
-        eventSource = new EventSource('/api/sync?stream=true')
-
-        eventSource.onopen = () => {
-          setConnected(true)
-        }
-
-        eventSource.onmessage = (event) => {
-          try {
-            const payload = JSON.parse(event.data) as OutputState
-            if (payload.type === 'VIDEO_PAUSE') {
-              setVideoPaused(true)
-              document.querySelectorAll('video').forEach((v) => v.pause())
-              return
-            }
-            if (payload.type === 'VIDEO_PLAY') {
-              setVideoPaused(false)
-              document.querySelectorAll('video').forEach((v) => {
-                v.play().catch(() => {})
-              })
-              return
-            }
-            handleStateUpdate(payload)
-          } catch { /* ignore parse errors */ }
-        }
-
-        eventSource.onerror = () => {
-          setConnected(false)
-          eventSource?.close()
-          reconnectTimer = setTimeout(connect, 3000)
-        }
-      } catch {
-        reconnectTimer = setTimeout(connect, 5000)
-      }
-    }
-
-    connect()
-
-    return () => {
-      eventSource?.close()
-      if (reconnectTimer) clearTimeout(reconnectTimer)
     }
   }, [handleStateUpdate])
 

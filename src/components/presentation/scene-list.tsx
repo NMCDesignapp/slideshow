@@ -204,16 +204,16 @@ function SortableGridItem({
       </div>
 
       {/* Compact layout: thumbnail left, info right - single row */}
-      <div className="flex items-center gap-1 px-1 py-0.5 bg-zinc-900/90">
+      <div className="flex items-center gap-1 px-1 py-px bg-zinc-900/90">
         {/* Order number */}
-        <span className={`text-[8px] font-bold min-w-[12px] text-center rounded px-0.5 flex-shrink-0 ${
+        <span className={`text-[7px] font-bold min-w-[10px] text-center rounded px-0.5 flex-shrink-0 ${
           isCurrent ? 'text-red-400 bg-red-900/30' : isNext ? 'text-emerald-400 bg-emerald-900/30' : 'text-zinc-500'
         }`}>
           {displayIndex}
         </span>
 
         {/* Mini thumbnail */}
-        <div className="w-8 h-5 rounded-sm bg-zinc-800 relative overflow-hidden flex-shrink-0">
+        <div className="w-6 h-4 rounded-sm bg-zinc-800 relative overflow-hidden flex-shrink-0">
           {thumbnailSrc ? (
             <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
           ) : scene.type === 'text' ? (
@@ -244,7 +244,7 @@ function SortableGridItem({
         </div>
 
         {/* Name */}
-        <p className="text-[8px] text-zinc-300 truncate flex-1 leading-tight">{scene.name}</p>
+        <p className="text-[7px] text-zinc-300 truncate flex-1 leading-tight">{scene.name}</p>
 
         {/* Delete button */}
         <button
@@ -743,11 +743,17 @@ export function SceneList() {
     e.target.value = ''
   }, [addScene, addVideoScene])
 
-  // Handle clicking a grid item → set it as NEXT
+  // Handle clicking a grid item → set it as NEXT, or toggle off if same
   const handleItemClick = useCallback((index: number) => {
-    selectAsNext(index)
-    setSelectedItemId(scenes[index]?.id || null)
-  }, [selectAsNext, scenes])
+    const clickedId = scenes[index]?.id || null
+    if (selectedItemId === clickedId) {
+      // Toggle off
+      setSelectedItemId(null)
+    } else {
+      selectAsNext(index)
+      setSelectedItemId(clickedId)
+    }
+  }, [selectAsNext, scenes, selectedItemId])
 
   // Handle editing order number
   const handleOrderChange = useCallback((sceneId: string, newOrder: number) => {
@@ -963,8 +969,12 @@ export function SceneList() {
                         onClick={() => {
                           const idx = scenes.findIndex((s) => s.pptxFileId === item.groupId)
                           if (idx >= 0) {
-                            selectAsNext(idx)
-                            setSelectedItemId(item.groupId)
+                            if (selectedItemId === item.groupId) {
+                              setSelectedItemId(null)
+                            } else {
+                              selectAsNext(idx)
+                              setSelectedItemId(item.groupId)
+                            }
                           }
                         }}
                         onDelete={() => deletePptxGroup(item.groupId)}
@@ -1001,9 +1011,9 @@ export function SceneList() {
         )}
       </ScrollArea>
 
-      {/* Detail panel - shown when an item is selected */}
+      {/* Detail panel - fixed section at bottom, always visible when selected */}
       {selectedScene && (
-        <div className="mt-1.5 border-t border-zinc-800 pt-1.5">
+        <div className="mt-1.5 border-t border-zinc-800 pt-1.5 overflow-y-auto max-h-[50%]">
           {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
             <PptxDetailPanel
               scenes={scenes}
@@ -1506,99 +1516,96 @@ export function ControlPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-1 overflow-y-auto">
+    <div className="flex flex-col h-full gap-1.5 overflow-y-auto">
       <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
         Điều khiển
       </h3>
 
-      {/* Projection buttons - compact row */}
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="ghost" onClick={goPrev} disabled={currentSceneIndex <= 0} className="text-zinc-400 hover:text-white h-6 w-6 p-0">
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </Button>
-        <span className="text-[10px] text-zinc-400 min-w-[32px] text-center tabular-nums font-mono">
-          {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : '0/0'}
-        </span>
-        <Button size="sm" variant="ghost" onClick={goNext} disabled={currentSceneIndex >= scenes.length - 1} className="text-zinc-400 hover:text-white h-6 w-6 p-0">
-          <ChevronRight className="w-3.5 h-3.5" />
-        </Button>
-
-        <div className="w-px h-4 bg-zinc-700 mx-0.5" />
-
-        {/* Black screen */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="sm" variant="ghost" onClick={toggleBlackScreen} className={`h-6 w-6 p-0 ${blackScreen ? 'text-red-400' : 'text-zinc-400'}`}>
-              <Square className="w-3 h-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            {blackScreen ? 'Bật hình' : 'Màn hình đen'}
-          </TooltipContent>
-        </Tooltip>
+      {/* Row 1 - Projection controls */}
+      <div className="space-y-1">
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Chiếu</span>
+        <div className="grid grid-cols-3 gap-1">
+          <Button size="sm" onClick={handleStartProjection} className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-7">
+            <MonitorUp className="w-3 h-3 mr-1" /> Chiếu
+          </Button>
+          <Button size="sm" variant="ghost" onClick={handleStopAll} disabled={!isLive} className="text-red-400 hover:text-red-300 hover:bg-red-900/20 text-[9px] h-7 border border-zinc-700">
+            Dừng
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="sm" variant="ghost" onClick={toggleBlackScreen} className={`text-[9px] h-7 border ${blackScreen ? 'text-red-400 bg-red-900/20 border-red-500/50' : 'text-zinc-400 border-zinc-700 hover:text-white'}`}>
+                <Square className="w-3 h-3 mr-1" /> Đen
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+              {blackScreen ? 'Bật hình' : 'Màn hình đen'}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
-      {/* Per-scene transition */}
+      {/* Row 2 - Navigation */}
       <div className="space-y-1">
-        <div className="flex items-center gap-1.5">
-          <input type="checkbox" checked={useCustomTransition} onChange={(e) => handleToggleCustomTransition(e.target.checked)} className="rounded" />
-          <span className="text-[9px] text-zinc-400">Hiệu ứng riêng cho slide này</span>
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Điều hướng</span>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={goPrev} disabled={currentSceneIndex <= 0} className="text-zinc-400 hover:text-white h-7 flex-1 border border-zinc-700">
+            <ChevronLeft className="w-3.5 h-3.5 mr-0.5" /> Trước
+          </Button>
+          <span className="text-[10px] text-zinc-400 min-w-[36px] text-center tabular-nums font-mono font-bold">
+            {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : '0/0'}
+          </span>
+          <Button size="sm" variant="ghost" onClick={goNext} disabled={currentSceneIndex >= scenes.length - 1} className="text-zinc-400 hover:text-white h-7 flex-1 border border-zinc-700">
+            Tiếp <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+          </Button>
         </div>
-        {useCustomTransition && (
-          <div className="space-y-1 pl-4">
-            <Select value={customTransitionType} onValueChange={(v) => handleCustomTransitionTypeChange(v as TransitionType)}>
-              <SelectTrigger className="h-6 bg-zinc-900 border-zinc-700 text-zinc-300 text-[9px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[200px]">
-                {TRANSITION_GROUPS.map((group) => (
-                  <SelectGroup key={group.key}>
-                    <SelectLabel className="text-[9px] text-zinc-500">{group.label}</SelectLabel>
-                    {TRANSITION_OPTIONS.filter((o) => o.group === group.key).map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="text-[9px]">
-                        {opt.icon} {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
+      </div>
+
+      {/* Row 3 - Settings */}
+      <div className="space-y-1">
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Cài đặt</span>
+
+        {/* Transition select */}
+        <Select value={customTransitionType} onValueChange={(v) => {
+          setCustomTransitionType(v as TransitionType)
+          if (currentScene) updateScene(currentScene.id, { sceneTransitionType: v as TransitionType })
+        }}>
+          <SelectTrigger className="h-6 bg-zinc-900 border-zinc-700 text-zinc-300 text-[9px]">
+            <SelectValue placeholder="Hiệu ứng chuyển" />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[200px]">
+            {TRANSITION_GROUPS.map((group) => (
+              <SelectGroup key={group.key}>
+                <SelectLabel className="text-[9px] text-zinc-500">{group.label}</SelectLabel>
+                {TRANSITION_OPTIONS.filter((o) => o.group === group.key).map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-[9px]">
+                    {opt.icon} {opt.label}
+                  </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-1">
-              <span className="text-[8px] text-zinc-500">Tốc độ</span>
-              <Slider value={[customTransitionDuration]} onValueChange={([v]) => handleCustomTransitionDurationChange(v)} min={100} max={3000} step={50} className="flex-1" />
-              <span className="text-[8px] text-zinc-400 w-8 text-right">{customTransitionDuration}ms</span>
-            </div>
-          </div>
-        )}
-      </div>
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
 
-      {/* Video controls (only when current is video) */}
-      {isVideoScene && (
-        <div className="space-y-1 p-1.5 bg-zinc-800/50 rounded-md">
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="ghost" onClick={handleVideoPauseToggle} className="text-purple-400 h-5 w-5 p-0">
-              {videoPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-            </Button>
-            <span className="text-[8px] text-zinc-500">Video</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[7px] text-zinc-500">Cắt</span>
-            <Input type="number" value={trimStartInput} onChange={(e) => setTrimStartInput(e.target.value)} placeholder="0" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
-            <span className="text-[7px] text-zinc-600">→</span>
-            <Input type="number" value={trimEndInput} onChange={(e) => setTrimEndInput(e.target.value)} placeholder="hết" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
-          </div>
-          <div className="flex items-center gap-1">
-            <Volume2 className="w-3 h-3 text-zinc-500" />
-            <Slider value={[videoVolume * 100]} onValueChange={([v]) => setVideoVolume(v / 100)} min={0} max={100} className="flex-1" />
-            <button onClick={() => setVideoMuted(!videoMuted)} className="text-zinc-400 hover:text-white">
-              {videoMuted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3" />}
-            </button>
-          </div>
+        {/* Transition duration */}
+        <div className="flex items-center gap-1">
+          <span className="text-[8px] text-zinc-500 w-8">Tốc độ</span>
+          <Slider value={[customTransitionDuration]} onValueChange={([v]) => {
+            setCustomTransitionDuration(v)
+            if (currentScene) updateScene(currentScene.id, { sceneTransitionDuration: v })
+          }} min={100} max={3000} step={50} className="flex-1" />
+          <span className="text-[8px] text-zinc-400 w-8 text-right">{customTransitionDuration}ms</span>
         </div>
-      )}
 
-      {/* Screen size */}
-      <div className="space-y-1">
+        {/* Volume */}
+        <div className="flex items-center gap-1">
+          <Volume2 className="w-3 h-3 text-zinc-500" />
+          <Slider value={[videoVolume * 100]} onValueChange={([v]) => setVideoVolume(v / 100)} min={0} max={100} className="flex-1" />
+          <button onClick={() => setVideoMuted(!videoMuted)} className="text-zinc-400 hover:text-white">
+            {videoMuted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3" />}
+          </button>
+        </div>
+
+        {/* Screen size */}
         <Select value={screenPreset} onValueChange={handleScreenPresetChange}>
           <SelectTrigger className="h-6 bg-zinc-900 border-zinc-700 text-zinc-300 text-[9px]">
             <SelectValue />
@@ -1619,27 +1626,38 @@ export function ControlPanel() {
         )}
       </div>
 
-      {/* Projection buttons */}
-      <div className="flex gap-1">
-        <Button size="sm" onClick={handleStartProjection} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-7">
-          <MonitorUp className="w-3 h-3 mr-1" /> Chiếu
-        </Button>
-        <Button size="sm" onClick={handleStartOnlineProjection} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white text-[9px] h-7">
-          Online
-        </Button>
-        <Button size="sm" variant="ghost" onClick={handleStopAll} disabled={!isLive} className="text-red-400 hover:text-red-300 text-[9px] h-7">
-          Tắt hết
-        </Button>
-      </div>
+      {/* Video controls (only when current is video) */}
+      {isVideoScene && (
+        <div className="space-y-1 p-1.5 bg-zinc-800/50 rounded-md">
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="ghost" onClick={handleVideoPauseToggle} className="text-purple-400 h-5 w-5 p-0">
+              {videoPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+            </Button>
+            <span className="text-[8px] text-zinc-500">Video</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[7px] text-zinc-500">Cắt</span>
+            <Input type="number" value={trimStartInput} onChange={(e) => setTrimStartInput(e.target.value)} placeholder="0" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
+            <span className="text-[7px] text-zinc-600">→</span>
+            <Input type="number" value={trimEndInput} onChange={(e) => setTrimEndInput(e.target.value)} placeholder="hết" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
+          </div>
+        </div>
+      )}
 
-      {/* Save / Load */}
-      <div className="flex gap-1">
-        <Button size="sm" variant="ghost" onClick={saveProject} className="text-zinc-400 hover:text-white text-[9px] h-6 flex-1">
-          <Save className="w-3 h-3 mr-1" /> Lưu
-        </Button>
-        <Button size="sm" variant="ghost" onClick={loadProject} className="text-zinc-400 hover:text-white text-[9px] h-6 flex-1">
-          <FolderOpen className="w-3 h-3 mr-1" /> Mở
-        </Button>
+      {/* Row 4 - Project */}
+      <div className="space-y-1">
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Dự án</span>
+        <div className="grid grid-cols-3 gap-1">
+          <Button size="sm" onClick={handleStartOnlineProjection} className="bg-cyan-600 hover:bg-cyan-700 text-white text-[9px] h-7">
+            Online
+          </Button>
+          <Button size="sm" variant="ghost" onClick={saveProject} className="text-zinc-400 hover:text-white text-[9px] h-7 border border-zinc-700">
+            <Save className="w-3 h-3 mr-1" /> Lưu
+          </Button>
+          <Button size="sm" variant="ghost" onClick={loadProject} className="text-zinc-400 hover:text-white text-[9px] h-7 border border-zinc-700">
+            <FolderOpen className="w-3 h-3 mr-1" /> Mở
+          </Button>
+        </div>
       </div>
 
       {/* Remote info */}

@@ -121,3 +121,33 @@ Stage Summary:
 - Scene list boxes are now ~50% shorter (single-row compact layout)
 - Controls are more compact and organized
 - Build passes successfully
+
+---
+Task ID: 1
+Agent: full-stack-developer
+Task: Fix ShowFlow UI issues (screen layout, projection, 16:9, detail panel, box size, control panel)
+
+Work Log:
+- Swapped Screen 1 (Đang chiếu) to RIGHT and Screen 2 (Tiếp theo) to LEFT in preview-panel.tsx
+- Fixed projection "Chiếu" button to open output window on second monitor: added handleGoLive() that opens popup at screen.width offset, sets outputWindowRef, calls goLive(), with toast feedback
+- Added toast import from sonner in preview-panel.tsx
+- Fixed 16:9 display: changed aspect-ratio container from `w-full` to `max-w-full max-h-full` with proper aspectRatio style using `${screenSize.width} / ${screenSize.height}`
+- Fixed detail panel: added `overflow-y-auto max-h-[50%]` to detail panel container so it scrolls when content exceeds space
+- Fixed item click toggle: clicking same item again now deselects it (sets selectedItemId to null) for both regular scenes and PPTX groups
+- Reduced scene box height by 50%: changed `py-0.5` to `py-px`, `w-8 h-5` to `w-6 h-4`, `text-[8px]` to `text-[7px]`, `min-w-[12px]` to `min-w-[10px]`
+- Rearranged ControlPanel into 4 organized rows with section labels:
+  - Row 1 (Chiếu): Chiếu, Dừng, Màn hình đen
+  - Row 2 (Điều hướng): ← Trước, slide counter, Tiếp →
+  - Row 3 (Cài đặt): Transition select, Duration slider, Volume, Screen size
+  - Row 4 (Dự án): Online, Lưu, Mở
+- Video controls shown conditionally when current scene is video
+- Build passes successfully with no errors
+
+Stage Summary:
+- Screen 2 (Tiếp theo) now on LEFT, Screen 1 (Đang chiếu) on RIGHT
+- Projection button opens output window on second monitor
+- 16:9 previews properly fill available space while maintaining aspect ratio
+- Detail panel has scrollable overflow with max height constraint
+- Click-to-toggle behavior for scene item selection
+- Scene boxes ~50% more compact (smaller padding, thumbnails, text, badges)
+- Control panel organized into 4 labeled rows for clarity

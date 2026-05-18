@@ -3,7 +3,7 @@
 import React, { useEffect, useCallback } from 'react'
 import { usePresentationStore } from '@/store/presentation-store'
 import { PreviewPanel } from '@/components/presentation/preview-panel'
-import { SceneList, TextOverlayPanel, ControlPanel, SceneDetailPanel } from '@/components/presentation/scene-list'
+import { SceneList, TextOverlayPanel, ControlPanel } from '@/components/presentation/scene-list'
 import { OutputSync } from '@/components/presentation/media-renderer'
 import { Toaster, toast } from 'sonner'
 import {
@@ -125,22 +125,13 @@ export default function Home() {
 
             <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
-            {/* Bottom area - 3-column: Detail Panel | Scene List | Controls */}
+            {/* Bottom area - Scene List + Detail (left) | Controls (right) */}
             <ResizablePanel defaultSize={50} minSize={20}>
               <div className="h-full flex flex-col">
                 <div className="flex-1 min-h-0 p-1.5 pt-1 pb-1">
                   <ResizablePanelGroup direction="horizontal">
-                    {/* LEFT: Detail Panel - always visible when scene selected */}
-                    <ResizablePanel defaultSize={25} minSize={15} className="hidden md:block">
-                      <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-1.5 overflow-auto">
-                        <SceneDetailPanel />
-                      </div>
-                    </ResizablePanel>
-
-                    <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
-
-                    {/* CENTER: Scene List */}
-                    <ResizablePanel defaultSize={35} minSize={20}>
+                    {/* LEFT: Scene List + Detail Panel integrated */}
+                    <ResizablePanel defaultSize={55} minSize={30}>
                       <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-1.5 overflow-hidden">
                         <SceneList />
                       </div>
@@ -149,7 +140,7 @@ export default function Home() {
                     <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
                     {/* RIGHT: Controls + Overlays */}
-                    <ResizablePanel defaultSize={40} minSize={20}>
+                    <ResizablePanel defaultSize={45} minSize={20}>
                       <div className="h-full flex flex-col gap-1">
                         <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 p-1.5 overflow-auto min-h-0">
                           <ControlPanel />

@@ -628,6 +628,13 @@ export function SceneList() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { selectedSceneId, setSelectedSceneId } = usePresentationStore()
 
+  // Auto-select first scene when scenes load and none selected
+  useEffect(() => {
+    if (scenes.length > 0 && !selectedSceneId) {
+      setSelectedSceneId(scenes[0].id)
+    }
+  }, [scenes.length, selectedSceneId, scenes, setSelectedSceneId])
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   )
@@ -826,7 +833,7 @@ export function SceneList() {
           groupId: scene.pptxFileId,
           groupFileName: group?.fileName,
           groupFirstSlide: group?.slides[0],
-          displayIndex: i + 3, // +3 because 1=current, 2=next
+          displayIndex: i + 1,
           sceneIndex: i,
         })
       }
@@ -834,7 +841,7 @@ export function SceneList() {
       gridItems.push({
         type: 'scene',
         scene,
-        displayIndex: i + 3, // +3 because 1=current, 2=next
+        displayIndex: i + 1,
         sceneIndex: i,
       })
     }
@@ -1005,6 +1012,59 @@ export function SceneList() {
           </DndContext>
         )}
       </ScrollArea>
+
+      {/* Detail panel - shown at bottom when scene selected */}
+      {selectedScene && (
+        <div className="mt-1 border-t border-zinc-800 pt-1 overflow-y-auto max-h-[200px]" style={{ transition: 'max-height 0.2s ease' }}>
+          {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
+            <PptxDetailPanel
+              scenes={scenes}
+              pptxGroupId={selectedScene.pptxFileId}
+              currentSceneIndex={currentSceneIndex}
+              nextSceneIndex={nextSceneIndex}
+              onSelectSlide={(idx) => selectAsNext(idx)}
+              onDeleteSlide={(id) => { removeScene(id); toast.success('Đã xoá slide') }}
+              onDeleteGroup={() => {
+                if (selectedScene.pptxFileId) {
+                  const groupSlides = scenes.filter(s => s.pptxFileId === selectedScene.pptxFileId)
+                  for (const slide of groupSlides) removeScene(slide.id)
+                  setSelectedSceneId(null)
+                  toast.success(`Đã xoá ${groupSlides.length} slide`)
+                }
+              }}
+              onMoveSlide={handleMoveSlide}
+            />
+          )}
+          {selectedScene.type === 'image' && (
+            <ImageDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá ảnh') }}
+            />
+          )}
+          {selectedScene.type === 'video' && (
+            <VideoDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá video') }}
+            />
+          )}
+          {selectedScene.type === 'text' && (
+            <TextDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá chữ') }}
+            />
+          )}
+          {selectedScene.type === 'web' && (
+            <WebDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedSceneId(null); toast.success('Đã xoá web') }}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

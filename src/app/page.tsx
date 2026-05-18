@@ -9,6 +9,9 @@ import { Toaster, toast } from 'sonner'
 import {
   MonitorUp,
   Keyboard,
+  Activity,
+  Layers3,
+  Radio,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -82,19 +85,37 @@ export default function Home() {
   return (
     <TooltipProvider delayDuration={300}>
       <Toaster theme="dark" position="bottom-right" />
-      <div className="h-screen flex flex-col bg-zinc-950 text-white overflow-hidden">
-        {/* Header - ultra minimal */}
-        <header className="flex items-center gap-3 px-4 py-1 bg-zinc-900/60 border-b border-zinc-800/60">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-              <MonitorUp className="w-3.5 h-3.5 text-white" />
+      <div className="neon-shell h-screen flex flex-col text-white overflow-hidden">
+        {/* Header - neon command bar */}
+        <header className="relative z-10 px-4 py-2 border-b border-emerald-400/20 bg-black/35 backdrop-blur-xl">
+          <div className="absolute inset-x-0 bottom-0 neon-line" />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg border border-emerald-300/45 bg-emerald-400/10 flex items-center justify-center shadow-[0_0_22px_rgba(34,197,94,0.35)]">
+                <MonitorUp className="w-4 h-4 text-emerald-200" />
+              </div>
+              <div className="leading-none">
+                <h1 className="text-sm font-black uppercase tracking-[0.28em] neon-text">ShowFlow</h1>
+                <p className="text-[9px] text-emerald-300/60 uppercase tracking-[0.24em]">Neon line console</p>
+              </div>
             </div>
-            <h1 className="text-xs font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent leading-tight">
-              ShowFlow
-            </h1>
-          </div>
 
-          <div className="flex-1" />
+            <div className="hidden md:flex items-center gap-2 ml-3">
+              <div className="neon-chip rounded-full px-2.5 py-1 text-[10px] text-emerald-100 flex items-center gap-1.5">
+                <Layers3 className="w-3 h-3 text-emerald-300" />
+                <span>{scenes.length} cảnh</span>
+              </div>
+              <div className="neon-chip rounded-full px-2.5 py-1 text-[10px] text-emerald-100 flex items-center gap-1.5">
+                <Activity className="w-3 h-3 text-emerald-300" />
+                <span>{transitionType} · {transitionDuration}ms</span>
+              </div>
+              <div className={`rounded-full px-2.5 py-1 text-[10px] flex items-center gap-1.5 border ${isLive ? 'border-emerald-300/50 bg-emerald-400/15 text-emerald-100 shadow-[0_0_18px_rgba(34,197,94,0.25)]' : 'border-zinc-700 bg-zinc-950/60 text-zinc-400'}`}>
+                <Radio className={`w-3 h-3 ${isLive ? 'text-emerald-300 animate-pulse' : 'text-zinc-500'}`} />
+                <span>{isLive ? 'LIVE output' : 'Standby'}</span>
+              </div>
+            </div>
+
+            <div className="flex-1" />
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -103,7 +124,7 @@ export default function Home() {
                 <span className="hidden sm:inline">← → Space B</span>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+            <TooltipContent side="bottom" className="bg-zinc-950 border-emerald-400/30 text-emerald-50 shadow-[0_0_20px_rgba(34,197,94,0.16)]">
               <div className="text-[10px] space-y-1 p-1">
                 <p><kbd className="px-1 py-0.5 bg-zinc-700 rounded text-[9px]">←</kbd> <kbd className="px-1 py-0.5 bg-zinc-700 rounded text-[9px]">→</kbd> Chuyển slide</p>
                 <p><kbd className="px-1 py-0.5 bg-zinc-700 rounded text-[9px]">Space</kbd> Slide tiếp</p>
@@ -111,10 +132,11 @@ export default function Home() {
               </div>
             </TooltipContent>
           </Tooltip>
+          </div>
         </header>
 
         {/* Main content - all in resizable vertical layout */}
-        <div className="flex-1 min-h-0">
+        <div className="relative z-10 flex-1 min-h-0">
           <ResizablePanelGroup direction="vertical" className="h-full">
             {/* Preview area - top */}
             <ResizablePanel defaultSize={50} minSize={25}>
@@ -123,7 +145,7 @@ export default function Home() {
               </div>
             </ResizablePanel>
 
-            <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
+            <ResizableHandle className="bg-emerald-400/20 hover:bg-emerald-400/55 transition-colors shadow-[0_0_12px_rgba(34,197,94,0.25)]" />
 
             {/* Bottom area - Scene List + Detail (left) | Controls (right) */}
             <ResizablePanel defaultSize={50} minSize={20}>
@@ -132,20 +154,20 @@ export default function Home() {
                   <ResizablePanelGroup direction="horizontal">
                     {/* LEFT: Scene List + Detail Panel integrated */}
                     <ResizablePanel defaultSize={55} minSize={30}>
-                      <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-1.5 overflow-hidden">
+                      <div className="neon-panel h-full rounded-xl p-1.5 overflow-hidden">
                         <SceneList />
                       </div>
                     </ResizablePanel>
 
-                    <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
+                    <ResizableHandle className="bg-emerald-400/20 hover:bg-emerald-400/55 transition-colors shadow-[0_0_12px_rgba(34,197,94,0.25)]" />
 
                     {/* RIGHT: Controls + Overlays */}
                     <ResizablePanel defaultSize={45} minSize={20}>
                       <div className="h-full flex flex-col gap-1">
-                        <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 p-1.5 overflow-auto min-h-0">
+                        <div className="neon-panel flex-1 rounded-xl p-1.5 overflow-auto min-h-0">
                           <ControlPanel />
                         </div>
-                        <div className="flex-[0.6] bg-zinc-900 rounded-lg border border-zinc-800 p-1.5 overflow-hidden min-h-0">
+                        <div className="neon-panel flex-[0.6] rounded-xl p-1.5 overflow-hidden min-h-0">
                           <TextOverlayPanel />
                         </div>
                       </div>

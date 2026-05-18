@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef } from 'react'
 import { usePresentationStore, SceneType, Scene } from '@/store/presentation-store'
 import { parsePptx } from '@/lib/pptx-parser'
 import {
-  Image,
+  Image as ImageIcon,
   Video,
   Globe,
   Type,
@@ -221,7 +221,7 @@ export function AddSceneDialog() {
   }
 
   const modeOptions: { value: AddMode; label: string; icon: React.ReactNode }[] = [
-    { value: 'image', label: 'Hình ảnh', icon: <Image className="w-4 h-4" aria-hidden /> },
+    { value: 'image', label: 'Hình ảnh', icon: <ImageIcon className="w-4 h-4" aria-hidden /> },
     { value: 'video', label: 'Video', icon: <Video className="w-4 h-4" /> },
     { value: 'web', label: 'Trang web', icon: <Globe className="w-4 h-4" /> },
     { value: 'text', label: 'Văn bản', icon: <Type className="w-4 h-4" /> },
@@ -289,7 +289,7 @@ export function AddSceneDialog() {
                       key={`${file.name}-${idx}`}
                       className="flex items-center gap-1 bg-zinc-800 border border-zinc-600 rounded-md px-2 py-1 text-[10px] text-zinc-300 group"
                     >
-                      <Image className="w-3 h-3 text-blue-400 flex-shrink-0" aria-hidden />
+                      <ImageIcon className="w-3 h-3 text-blue-400 flex-shrink-0" aria-hidden />
                       <span className="truncate max-w-[120px]">{file.name}</span>
                       <span className="text-zinc-500">({(file.size / 1024).toFixed(0)}KB)</span>
                       <button

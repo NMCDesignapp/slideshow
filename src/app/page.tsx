@@ -117,7 +117,7 @@ export default function Home() {
         <div className="flex-1 min-h-0">
           <ResizablePanelGroup direction="vertical" className="h-full">
             {/* Preview area - top */}
-            <ResizablePanel defaultSize={55} minSize={25}>
+            <ResizablePanel defaultSize={50} minSize={25}>
               <div className="h-full p-2 pb-1">
                 <PreviewPanel />
               </div>
@@ -125,14 +125,13 @@ export default function Home() {
 
             <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
-            {/* Bottom area - edit + controls, all integrated */}
-            <ResizablePanel defaultSize={45} minSize={25}>
+            {/* Bottom area - scene list + controls */}
+            <ResizablePanel defaultSize={50} minSize={25}>
               <div className="h-full flex flex-col">
-                {/* Edit panels - left: scene list, right: controls + overlays */}
                 <div className="flex-1 min-h-0 p-2 pt-1 pb-1">
                   <ResizablePanelGroup direction="horizontal">
-                    {/* Scene list */}
-                    <ResizablePanel defaultSize={55} minSize={35}>
+                    {/* Scene list - wider for grid layout */}
+                    <ResizablePanel defaultSize={60} minSize={35}>
                       <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
                         <SceneList />
                       </div>
@@ -141,13 +140,11 @@ export default function Home() {
                     <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
                     {/* Right panel: Controls on top, Overlays below */}
-                    <ResizablePanel defaultSize={45} minSize={25}>
+                    <ResizablePanel defaultSize={40} minSize={25}>
                       <div className="h-full flex flex-col gap-1">
-                        {/* Control panel - integrated into the editing area */}
-                        <div className="flex-[1.5] bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
+                        <div className="flex-[1.5] bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-auto">
                           <ControlPanel />
                         </div>
-                        {/* Text overlays */}
                         <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden min-h-0">
                           <TextOverlayPanel />
                         </div>

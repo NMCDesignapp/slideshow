@@ -123,7 +123,10 @@ export interface TextOverlay {
 
 interface PresentationState {
   scenes: Scene[]
+  /** Index of the scene currently being projected (ĐANG CHIẾU = screen 1) */
   currentSceneIndex: number
+  /** Index of the scene queued as next (TIẾP THEO = screen 2). Separate from currentSceneIndex so clicking in list only changes the next preview. */
+  nextSceneIndex: number
   isLive: boolean
   outputWindowRef: Window | null
   textOverlays: TextOverlay[]
@@ -143,6 +146,12 @@ interface PresentationState {
   updateScene: (id: string, updates: Partial<Scene>) => void
   reorderScenes: (fromIndex: number, toIndex: number) => void
   setCurrentSceneIndex: (index: number) => void
+  /** Set the next scene index (only changes the TIẾP THEO preview, not ĐANG CHIẾU) */
+  setNextSceneIndex: (index: number) => void
+  /** Select a scene as next preview (clicking in list) */
+  selectAsNext: (index: number) => void
+  /** Move nextSceneIndex to a new position (when editing number on a box) */
+  moveNextToPosition: (newPosition: number) => void
   goNext: () => void
   goPrev: () => void
   goLive: () => void
@@ -169,6 +178,7 @@ let overlayIdCounter = 0
 export const usePresentationStore = create<PresentationState>((set, get) => ({
   scenes: [],
   currentSceneIndex: -1,
+  nextSceneIndex: -1,
   isLive: false,
   outputWindowRef: null,
   textOverlays: [],
@@ -182,10 +192,14 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   addScene: (scene) => {
     const id = `scene-${++sceneIdCounter}-${Date.now()}`
     const order = get().scenes.length
-    set((state) => ({
-      scenes: [...state.scenes, { ...scene, id, order }],
-      currentSceneIndex: state.currentSceneIndex === -1 ? 0 : state.currentSceneIndex,
-    }))
+    set((state) => {
+      const newScenes = [...state.scenes, { ...scene, id, order }]
+      return {
+        scenes: newScenes,
+        currentSceneIndex: state.currentSceneIndex === -1 ? 0 : state.currentSceneIndex,
+        nextSceneIndex: state.nextSceneIndex === -1 ? (newScenes.length > 1 ? 1 : 0) : state.nextSceneIndex,
+      }
+    })
   },
 
   removeScene: (id) => {
@@ -193,15 +207,26 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
       const newScenes = state.scenes
         .filter((s) => s.id !== id)
         .map((s, i) => ({ ...s, order: i }))
-      let newIndex = state.currentSceneIndex
+      let newCurrentIndex = state.currentSceneIndex
+      let newNextIndex = state.nextSceneIndex
       const removedIndex = state.scenes.findIndex((s) => s.id === id)
       if (removedIndex === state.currentSceneIndex) {
-        newIndex = Math.min(newIndex, newScenes.length - 1)
+        newCurrentIndex = Math.min(newCurrentIndex, newScenes.length - 1)
       } else if (removedIndex < state.currentSceneIndex) {
-        newIndex = state.currentSceneIndex - 1
+        newCurrentIndex = state.currentSceneIndex - 1
       }
-      if (newIndex < 0) newIndex = newScenes.length > 0 ? 0 : -1
-      return { scenes: newScenes, currentSceneIndex: newIndex }
+      if (removedIndex === state.nextSceneIndex) {
+        newNextIndex = Math.min(newNextIndex, newScenes.length - 1)
+      } else if (removedIndex < state.nextSceneIndex) {
+        newNextIndex = state.nextSceneIndex - 1
+      }
+      if (newCurrentIndex < 0) newCurrentIndex = newScenes.length > 0 ? 0 : -1
+      if (newNextIndex < 0) newNextIndex = newScenes.length > 0 ? 0 : -1
+      // Ensure next !== current when possible
+      if (newNextIndex === newCurrentIndex && newScenes.length > 1) {
+        newNextIndex = Math.min(newCurrentIndex + 1, newScenes.length - 1)
+      }
+      return { scenes: newScenes, currentSceneIndex: newCurrentIndex, nextSceneIndex: newNextIndex }
     })
   },
 
@@ -218,23 +243,54 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
       newScenes.splice(toIndex, 0, moved)
       const reordered = newScenes.map((s, i) => ({ ...s, order: i }))
       const currentId = state.scenes[state.currentSceneIndex]?.id
+      const nextId = state.scenes[state.nextSceneIndex]?.id
       const newIndex = reordered.findIndex((s) => s.id === currentId)
-      return { scenes: reordered, currentSceneIndex: newIndex }
+      const newNextIndex = reordered.findIndex((s) => s.id === nextId)
+      return { scenes: reordered, currentSceneIndex: newIndex >= 0 ? newIndex : 0, nextSceneIndex: newNextIndex >= 0 ? newNextIndex : 0 }
     })
   },
 
   setCurrentSceneIndex: (index) => set({ currentSceneIndex: index }),
 
+  setNextSceneIndex: (index) => set({ nextSceneIndex: index }),
+
+  selectAsNext: (index) => {
+    set({ nextSceneIndex: index })
+  },
+
+  moveNextToPosition: (newPosition) => {
+    const state = get()
+    const totalScenes = state.scenes.length
+    if (newPosition < 0 || newPosition >= totalScenes) return
+    // Reorder: move the scene at nextSceneIndex to newPosition
+    if (state.nextSceneIndex !== newPosition) {
+      const newScenes = [...state.scenes]
+      const [moved] = newScenes.splice(state.nextSceneIndex, 1)
+      newScenes.splice(newPosition, 0, moved)
+      const reordered = newScenes.map((s, i) => ({ ...s, order: i }))
+      // Update currentSceneIndex to follow the currently projecting scene
+      const currentId = state.scenes[state.currentSceneIndex]?.id
+      const newCurrentIndex = reordered.findIndex((s) => s.id === currentId)
+      set({ scenes: reordered, nextSceneIndex: newPosition, currentSceneIndex: newCurrentIndex >= 0 ? newCurrentIndex : 0 })
+    }
+  },
+
   goNext: () =>
     set((state) => {
-      const next = Math.min(state.currentSceneIndex + 1, state.scenes.length - 1)
-      return { currentSceneIndex: next }
+      if (state.scenes.length === 0) return { currentSceneIndex: -1, nextSceneIndex: -1 }
+      // Move nextSceneIndex to currentSceneIndex (project the next scene)
+      const newCurrent = state.nextSceneIndex >= 0 ? state.nextSceneIndex : Math.min(state.currentSceneIndex + 1, state.scenes.length - 1)
+      // Advance nextSceneIndex to the scene after newCurrent
+      let newNext = newCurrent + 1
+      if (newNext >= state.scenes.length) newNext = newCurrent // stay if at end
+      return { currentSceneIndex: newCurrent, nextSceneIndex: newNext }
     }),
 
   goPrev: () =>
     set((state) => {
+      if (state.scenes.length === 0) return { currentSceneIndex: -1, nextSceneIndex: -1 }
       const prev = Math.max(state.currentSceneIndex - 1, 0)
-      return { currentSceneIndex: prev }
+      return { currentSceneIndex: prev, nextSceneIndex: state.currentSceneIndex > 0 ? state.currentSceneIndex : prev }
     }),
 
   goLive: () => set({ isLive: true }),
@@ -291,6 +347,7 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
         thumbnail: s.thumbnail?.startsWith('blob:') ? undefined : s.thumbnail,
       })),
       currentSceneIndex: state.currentSceneIndex,
+      nextSceneIndex: state.nextSceneIndex,
       transitionType: state.transitionType,
       transitionDuration: state.transitionDuration,
       textOverlays: state.textOverlays,
@@ -314,6 +371,7 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
       set({
         scenes: project.scenes || [],
         currentSceneIndex: project.currentSceneIndex ?? -1,
+        nextSceneIndex: project.nextSceneIndex ?? (project.currentSceneIndex !== undefined ? Math.min(project.currentSceneIndex + 1, (project.scenes?.length || 1) - 1) : -1),
         transitionType: project.transitionType || 'fade',
         transitionDuration: project.transitionDuration || DEFAULT_TRANSITION_DURATION,
         textOverlays: project.textOverlays || [],
@@ -327,6 +385,6 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   },
 
   clearAllScenes: () => {
-    set({ scenes: [], currentSceneIndex: -1, textOverlays: [] })
+    set({ scenes: [], currentSceneIndex: -1, nextSceneIndex: -1, textOverlays: [] })
   },
 }))

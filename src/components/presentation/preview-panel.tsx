@@ -4,111 +4,26 @@ import React from 'react'
 import { usePresentationStore } from '@/store/presentation-store'
 import { TransitionRenderer, MediaRenderer } from './media-renderer'
 import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import {
   Monitor,
   MonitorOff,
-  X,
   ChevronLeft,
   ChevronRight,
   Square,
   Play,
   Pause,
   Radio,
+  ArrowRight,
 } from 'lucide-react'
-
-/** Sortable filmstrip item for PPTX slides */
-function FilmstripItem({
-  scene,
-  globalIndex,
-  isActive,
-  onClick,
-  onDelete,
-}: {
-  scene: any
-  globalIndex: number
-  isActive: boolean
-  onClick: () => void
-  onDelete: () => void
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: scene.id,
-  })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative group rounded-md overflow-hidden cursor-pointer border-2 transition-all ${
-        isActive
-          ? 'border-emerald-500 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-500/10'
-          : 'border-zinc-700 hover:border-zinc-500 opacity-60 hover:opacity-100'
-      }`}
-      onClick={onClick}
-    >
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute inset-0 z-10"
-        style={{ cursor: 'grab' }}
-      />
-      <div className="relative aspect-video bg-black w-full">
-        <img
-          src={scene.src}
-          alt={scene.name || `Slide`}
-          className="w-full h-full object-contain"
-          draggable={false}
-        />
-        {isActive && (
-          <div className="absolute top-0.5 left-0.5 bg-emerald-500 text-white text-[7px] px-1 py-px rounded font-bold flex items-center gap-0.5 z-20 pointer-events-none">
-            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
-            LIVE
-          </div>
-        )}
-      </div>
-      {/* Delete button on hover */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
-        className="absolute top-0.5 right-0.5 z-30 opacity-0 group-hover:opacity-100 bg-red-600/80 hover:bg-red-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center transition-opacity"
-      >
-        <X className="w-2 h-2" />
-      </button>
-    </div>
-  )
-}
 
 export function PreviewPanel() {
   const {
     scenes,
     currentSceneIndex,
+    nextSceneIndex,
     isLive,
     blackScreen,
     transitionType,
     transitionDuration,
-    setCurrentSceneIndex,
-    removeScene,
-    reorderScenes,
     goNext,
     goPrev,
     toggleBlackScreen,
@@ -118,151 +33,19 @@ export function PreviewPanel() {
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
-  const nextScene = scenes[currentSceneIndex + 1]
-
-  // Get PPTX slides for the filmstrip - find all slides that share a pptxFileId with current scene
-  const pptxSlides = currentScene?.pptxFileId
-    ? scenes.filter((s: any) => s.pptxFileId === currentScene.pptxFileId)
-    : []
-  const showFilmstrip = pptxSlides.length > 1
-
-  // dnd-kit sensors for filmstrip
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
-  )
-
-  const handleFilmstripDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    if (over && active.id !== over.id) {
-      const oldIndex = scenes.findIndex((s: any) => s.id === active.id)
-      const newIndex = scenes.findIndex((s: any) => s.id === over.id)
-      reorderScenes(oldIndex, newIndex)
-    }
-  }
+  const nextScene = scenes[nextSceneIndex]
 
   // Aspect ratio for previews
   const aspectRatio = screenSize.width / screenSize.height
 
   return (
     <div className="flex gap-2 flex-1 min-h-0 h-full">
-      {/* FILMSTRIP - only shown when PPTX slides present */}
-      {showFilmstrip && (
-        <div className="w-[80px] flex-shrink-0 flex flex-col min-h-0">
-          <div className="flex items-center gap-1 mb-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span className="text-[8px] font-medium text-zinc-400 uppercase tracking-wider truncate">Slide</span>
-          </div>
-          <div className="flex-1 min-h-0 bg-zinc-900 rounded-lg border border-zinc-800 p-1 overflow-y-auto custom-scrollbar">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleFilmstripDragEnd}>
-              <SortableContext items={pptxSlides.map((s: any) => s.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-1">
-                  {pptxSlides.map((slide: any) => {
-                    const globalIdx = scenes.findIndex((s: any) => s.id === slide.id)
-                    const isActive = slide.id === currentScene?.id
-                    return (
-                      <FilmstripItem
-                        key={slide.id}
-                        scene={slide}
-                        globalIndex={globalIdx}
-                        isActive={isActive}
-                        onClick={() => {
-                          if (globalIdx >= 0) setCurrentSceneIndex(globalIdx)
-                        }}
-                        onDelete={() => {
-                          removeScene(slide.id)
-                        }}
-                      />
-                    )
-                  })}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </div>
-        </div>
-      )}
-
-      {/* LEFT - "Tiếp theo" (Next) preview - EQUAL size */}
+      {/* LEFT - Screen 1: "ĐANG CHIẾU" (Currently projecting) */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
-          <div className="w-2 h-2 rounded-full bg-zinc-600" />
-          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tiếp theo</span>
-        </div>
-        <div className="flex-1 max-h-full bg-black rounded-lg overflow-hidden border border-zinc-800 relative" style={{ aspectRatio: aspectRatio }}>
-          {nextScene ? (
-            <MediaRenderer scene={nextScene} isActive={false} isPreview={true} />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-zinc-700">
-              <div className="text-center">
-                <MonitorOff className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-xs">Hết nội dung</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CENTER - Navigation controls column */}
-      <div className="flex flex-col items-center justify-center gap-2 px-1 min-w-[44px]">
-        {/* Prev button */}
-        <button
-          onClick={goPrev}
-          disabled={currentSceneIndex <= 0}
-          className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-
-        {/* Slide counter */}
-        <div className="text-[11px] font-mono text-zinc-400 tabular-nums text-center leading-tight">
-          <div className="text-emerald-400 font-bold text-sm">
-            {scenes.length > 0 ? currentSceneIndex + 1 : 0}
+          <div className="flex items-center justify-center w-5 h-5 rounded bg-red-600/20 border border-red-500/40">
+            <span className="text-[10px] font-bold text-red-400">1</span>
           </div>
-          <div className="text-zinc-600">/</div>
-          <div>{scenes.length}</div>
-        </div>
-
-        {/* Next button */}
-        <button
-          onClick={goNext}
-          disabled={currentSceneIndex >= scenes.length - 1}
-          className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-
-        {/* Divider */}
-        <div className="w-6 h-px bg-zinc-700 my-0.5" />
-
-        {/* Black screen toggle */}
-        <button
-          onClick={toggleBlackScreen}
-          className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors ${
-            blackScreen
-              ? 'bg-red-600/20 border border-red-500/50 text-red-400'
-              : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700'
-          }`}
-          title={blackScreen ? 'Bật hình' : 'Màn hình đen'}
-        >
-          <Square className="w-4 h-4" />
-        </button>
-
-        {/* Live/Stop toggle */}
-        <button
-          onClick={isLive ? stopLive : goLive}
-          className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors ${
-            isLive
-              ? 'bg-emerald-600/20 border border-emerald-500/50 text-emerald-400'
-              : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-700'
-          }`}
-          title={isLive ? 'Dừng chiếu' : 'Bắt đầu chiếu'}
-        >
-          {isLive ? <Radio className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-        </button>
-      </div>
-
-      {/* RIGHT - Main preview (ĐANG CHIẾU) - EQUAL size */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center gap-2 mb-1.5">
           <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} />
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
             Đang chiếu
@@ -296,6 +79,99 @@ export function PreviewPanel() {
                 <Monitor className="w-16 h-16 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Chưa có nội dung</p>
                 <p className="text-xs mt-1 text-zinc-700">Thêm thành phần bên dưới</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* CENTER - Navigation controls column */}
+      <div className="flex flex-col items-center justify-center gap-2 px-1 min-w-[44px]">
+        {/* Prev button */}
+        <button
+          onClick={goPrev}
+          disabled={currentSceneIndex <= 0}
+          className="h-9 w-9 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        {/* Slide counter */}
+        <div className="text-[11px] font-mono text-zinc-400 tabular-nums text-center leading-tight">
+          <div className="text-emerald-400 font-bold text-sm">
+            {scenes.length > 0 ? currentSceneIndex + 1 : 0}
+          </div>
+          <div className="text-zinc-600">/</div>
+          <div>{scenes.length}</div>
+        </div>
+
+        {/* Next button - projects the next scene */}
+        <button
+          onClick={goNext}
+          disabled={nextSceneIndex < 0 || scenes.length === 0}
+          className="h-9 w-9 rounded-lg bg-emerald-700/30 border border-emerald-600/50 flex items-center justify-center text-emerald-400 hover:text-white hover:bg-emerald-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Chiếu slide tiếp theo"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+
+        {/* Divider */}
+        <div className="w-6 h-px bg-zinc-700 my-0.5" />
+
+        {/* Arrow indicating "project next" */}
+        <div className="text-emerald-500/50">
+          <ArrowRight className="w-4 h-4" />
+        </div>
+
+        {/* Divider */}
+        <div className="w-6 h-px bg-zinc-700 my-0.5" />
+
+        {/* Black screen toggle */}
+        <button
+          onClick={toggleBlackScreen}
+          className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors ${
+            blackScreen
+              ? 'bg-red-600/20 border border-red-500/50 text-red-400'
+              : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700'
+          }`}
+          title={blackScreen ? 'Bật hình' : 'Màn hình đen'}
+        >
+          <Square className="w-4 h-4" />
+        </button>
+
+        {/* Live/Stop toggle */}
+        <button
+          onClick={isLive ? stopLive : goLive}
+          className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors ${
+            isLive
+              ? 'bg-emerald-600/20 border border-emerald-500/50 text-emerald-400'
+              : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-700'
+          }`}
+          title={isLive ? 'Dừng chiếu' : 'Bắt đầu chiếu'}
+        >
+          {isLive ? <Radio className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        </button>
+      </div>
+
+      {/* RIGHT - Screen 2: "TIẾP THEO" (Next to project) */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center justify-center w-5 h-5 rounded bg-emerald-600/20 border border-emerald-500/40">
+            <span className="text-[10px] font-bold text-emerald-400">2</span>
+          </div>
+          <div className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="text-xs font-medium text-emerald-400 uppercase tracking-wider">
+            Tiếp theo
+          </span>
+        </div>
+        <div className="flex-1 max-h-full bg-black rounded-lg overflow-hidden border border-emerald-800/50 relative" style={{ aspectRatio: aspectRatio }}>
+          {nextScene ? (
+            <MediaRenderer scene={nextScene} isActive={false} isPreview={true} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-700">
+              <div className="text-center">
+                <MonitorOff className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-xs">Chọn mục từ danh sách</p>
               </div>
             </div>
           )}

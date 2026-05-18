@@ -1,13 +1,12 @@
 'use client'
 
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType, Scene } from '@/store/presentation-store'
+import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType, Scene, SceneType } from '@/store/presentation-store'
 import { parsePptx } from '@/lib/pptx-parser'
 import { setVideoPaused, isVideoPaused } from './media-renderer'
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -15,13 +14,11 @@ import {
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
+  rectSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  GripVertical,
   Trash2,
   Image,
   Video,
@@ -40,26 +37,35 @@ import {
   Square,
   Play,
   Pause,
-  Sparkles,
-  Clock,
-  Volume2,
-  VolumeX,
-  MonitorUp,
   Upload,
+  Trash,
+  FileBox,
+  Scissors,
+  MoveUp,
+  MoveDown,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Bold,
+  Italic,
+  Underline,
+  MonitorUp,
+  Maximize2,
+  GripVertical,
+  Settings,
   Save,
   FolderOpen,
-  Wifi,
-  Copy,
-  ExternalLink,
-  Trash,
-  Globe as GlobeIcon,
-  Power,
-  Scissors,
+  Volume2,
+  VolumeX,
   Check,
-  FileBox,
+  Copy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { AddSceneDialog } from './add-scene-dialog'
 import { toast } from 'sonner'
@@ -78,7 +84,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Checkbox } from '@/components/ui/checkbox'
 
 // === VIDEO THUMBNAIL GENERATOR ===
 function generateVideoThumbnail(videoSrc: string): Promise<string> {
@@ -125,31 +130,42 @@ function generateVideoThumbnail(videoSrc: string): Promise<string> {
 // PPTX file counter for unique IDs
 let pptxCounter = 0
 
-function SceneIcon({ type }: { type: Scene['type'] }) {
+function SceneIcon({ type, size = 14 }: { type: Scene['type']; size?: number }) {
+  const cls = `text-${size === 14 ? 4 : 3}`
   switch (type) {
-    case 'image':
-      return <Image className="w-4 h-4 text-blue-400" aria-hidden />
-    case 'video':
-      return <Video className="w-4 h-4 text-purple-400" />
-    case 'web':
-      return <Globe className="w-4 h-4 text-cyan-400" />
-    case 'text':
-      return <Type className="w-4 h-4 text-yellow-400" />
-    case 'pptx-slide':
-      return <Presentation className="w-4 h-4 text-orange-400" />
-    default:
-      return null
+    case 'image': return <Image className={`${cls} text-blue-400`} style={{ width: size, height: size }} />
+    case 'video': return <Video className={`${cls} text-purple-400`} style={{ width: size, height: size }} />
+    case 'web': return <Globe className={`${cls} text-cyan-400`} style={{ width: size, height: size }} />
+    case 'text': return <Type className={`${cls} text-yellow-400`} style={{ width: size, height: size }} />
+    case 'pptx-slide': return <Presentation className={`${cls} text-orange-400`} style={{ width: size, height: size }} />
+    default: return null
   }
 }
 
-function SortableSceneItem({
+function getTypeLabel(type: SceneType): string {
+  switch (type) {
+    case 'image': return 'Ảnh'
+    case 'video': return 'Video'
+    case 'web': return 'Web'
+    case 'text': return 'Chữ'
+    case 'pptx-slide': return 'Slide'
+    default: return ''
+  }
+}
+
+// === SORTABLE GRID ITEM ===
+function SortableGridItem({
   scene,
-  isActive,
+  displayIndex,
+  isNext,
+  isCurrent,
   onClick,
   onDelete,
 }: {
   scene: Scene
-  isActive: boolean
+  displayIndex: number
+  isNext: boolean
+  isCurrent: boolean
   onClick: () => void
   onDelete: () => void
 }) {
@@ -163,120 +179,465 @@ function SortableSceneItem({
     opacity: isDragging ? 0.5 : 1,
   }
 
-  // Determine thumbnail to show
   const thumbnailSrc = scene.thumbnail || (scene.type === 'pptx-slide' ? scene.src : undefined)
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors group ${
-        isActive
-          ? 'bg-emerald-600/20 border border-emerald-500/50'
-          : 'bg-zinc-800/50 border border-transparent hover:bg-zinc-800'
+      className={`relative rounded-lg overflow-hidden cursor-pointer transition-all group border-2 ${
+        isCurrent
+          ? 'border-red-500 ring-1 ring-red-500/30 shadow-lg shadow-red-500/10'
+          : isNext
+            ? 'border-emerald-500 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-500/10'
+            : 'border-zinc-700 hover:border-zinc-500'
       }`}
       onClick={onClick}
     >
+      {/* Drag handle */}
       <div
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-zinc-500 hover:text-zinc-300"
+        className="absolute top-0.5 left-0.5 z-20 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 bg-zinc-800/80 rounded p-0.5 transition-opacity"
       >
-        <GripVertical className="w-3.5 h-3.5" />
+        <GripVertical className="w-3 h-3 text-zinc-400" />
       </div>
-      <SceneIcon type={scene.type} />
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-zinc-200 truncate">{scene.name}</p>
-        {/* Show trim info for video */}
-        {scene.type === 'video' && (scene.trimStart !== undefined || scene.trimEnd !== undefined) && (
-          <p className="text-[9px] text-zinc-500">
-            {scene.trimStart !== undefined ? `${scene.trimStart.toFixed(1)}s` : '0s'}
-            {' → '}
-            {scene.trimEnd !== undefined ? `${scene.trimEnd.toFixed(1)}s` : 'hết'}
-          </p>
-        )}
-        {/* Show per-scene transition indicator */}
-        {scene.sceneTransitionType && (
-          <p className="text-[9px] text-amber-400/70">
-            ✦ {scene.sceneTransitionType} {scene.sceneTransitionDuration ? `${scene.sceneTransitionDuration}ms` : ''}
-          </p>
-        )}
-      </div>
-      {thumbnailSrc && (
-        <div className="w-7 h-5 rounded overflow-hidden flex-shrink-0 bg-zinc-800">
-          <img src={thumbnailSrc} alt="Thumbnail" className="w-full h-full object-cover" />
-        </div>
-      )}
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
-        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  )
-}
 
-/** PPTX group header item */
-function PptxGroupItem({
-  fileName,
-  slideCount,
-  isExpanded,
-  onToggle,
-  onDeleteGroup,
-  groupId,
-}: {
-  fileName: string
-  slideCount: number
-  isExpanded: boolean
-  onToggle: () => void
-  onDeleteGroup: () => void
-  groupId: string
-}) {
-  return (
-    <div
-      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-orange-900/20 border border-orange-700/30 cursor-pointer group transition-colors hover:bg-orange-900/30"
-      onClick={onToggle}
-    >
-      <button className="text-orange-400 flex-shrink-0">
-        {isExpanded ? (
-          <ChevronDown className="w-3.5 h-3.5" />
+      {/* Thumbnail area */}
+      <div className="aspect-video bg-zinc-800 relative overflow-hidden">
+        {thumbnailSrc ? (
+          <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
+        ) : scene.type === 'text' ? (
+          <div className="w-full h-full flex items-center justify-center p-1" style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}>
+            <p className="text-[7px] text-center truncate" style={{ color: scene.fontColor || '#fff', fontSize: `${Math.min(scene.fontSize || 48, 10)}px` }}>
+              {scene.content}
+            </p>
+          </div>
+        ) : scene.type === 'web' ? (
+          <div className="w-full h-full flex items-center justify-center bg-cyan-900/20">
+            <Globe className="w-6 h-6 text-cyan-400/40" />
+          </div>
         ) : (
-          <ChevronRightIcon className="w-3.5 h-3.5" />
+          <div className="w-full h-full flex items-center justify-center">
+            <SceneIcon type={scene.type} size={20} />
+          </div>
         )}
-      </button>
-      <FileBox className="w-4 h-4 text-orange-400 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] text-orange-200 truncate font-medium">{fileName}</p>
-        <p className="text-[9px] text-orange-400/60">{slideCount} slide</p>
+
+        {/* Status badge */}
+        {isCurrent && (
+          <div className="absolute top-0.5 right-0.5 bg-red-500 text-white text-[7px] px-1 py-px rounded font-bold z-10 flex items-center gap-0.5">
+            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+            LIVE
+          </div>
+        )}
+        {isNext && !isCurrent && (
+          <div className="absolute top-0.5 right-0.5 bg-emerald-500 text-white text-[7px] px-1 py-px rounded font-bold z-10">
+            NEXT
+          </div>
+        )}
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDeleteGroup()
-        }}
-        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity flex-shrink-0"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
+
+      {/* Info area */}
+      <div className="p-1 bg-zinc-900/80">
+        <div className="flex items-center gap-1">
+          {/* Order number - editable */}
+          <span className={`text-[9px] font-bold min-w-[14px] text-center rounded px-0.5 ${
+            isCurrent ? 'text-red-400 bg-red-900/30' : isNext ? 'text-emerald-400 bg-emerald-900/30' : 'text-zinc-500'
+          }`}>
+            {displayIndex}
+          </span>
+          <SceneIcon type={scene.type} size={10} />
+          <p className="text-[9px] text-zinc-300 truncate flex-1">{scene.name}</p>
+          {/* Delete button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity flex-shrink-0"
+          >
+            <Trash2 className="w-2.5 h-2.5" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
+// === PPTX DETAIL PANEL ===
+function PptxDetailPanel({
+  scenes,
+  pptxGroupId,
+  currentSceneIndex,
+  nextSceneIndex,
+  onSelectSlide,
+  onDeleteSlide,
+  onDeleteGroup,
+  onMoveSlide,
+}: {
+  scenes: Scene[]
+  pptxGroupId: string
+  currentSceneIndex: number
+  nextSceneIndex: number
+  onSelectSlide: (index: number) => void
+  onDeleteSlide: (id: string) => void
+  onDeleteGroup: () => void
+  onMoveSlide: (id: string, direction: 'up' | 'down') => void
+}) {
+  const groupSlides = scenes.filter((s) => s.pptxFileId === pptxGroupId)
+  const fileName = groupSlides[0]?.pptxFileName || 'PPTX'
+
+  return (
+    <div className="p-2 bg-orange-900/10 border border-orange-700/20 rounded-lg space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <FileBox className="w-3.5 h-3.5 text-orange-400" />
+          <span className="text-[10px] font-medium text-orange-200 truncate max-w-[120px]">{fileName}</span>
+          <span className="text-[8px] text-orange-400/60">{groupSlides.length} slide</span>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDeleteGroup}
+          className="text-red-400 hover:text-red-300 h-5 w-5 p-0"
+        >
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </div>
+
+      <ScrollArea className="max-h-[150px]">
+        <div className="space-y-0.5">
+          {groupSlides.map((slide) => {
+            const globalIdx = scenes.findIndex((s) => s.id === slide.id)
+            const isCurrent = globalIdx === currentSceneIndex
+            const isNext = globalIdx === nextSceneIndex
+            return (
+              <div
+                key={slide.id}
+                className={`flex items-center gap-1 px-1.5 py-1 rounded cursor-pointer transition-colors ${
+                  isCurrent ? 'bg-red-900/30 border border-red-500/30' :
+                  isNext ? 'bg-emerald-900/30 border border-emerald-500/30' :
+                  'bg-zinc-800/50 hover:bg-zinc-800 border border-transparent'
+                }`}
+                onClick={() => onSelectSlide(globalIdx)}
+              >
+                <span className="text-[8px] font-bold text-zinc-500 w-3 text-center">{globalIdx + 1}</span>
+                <div className="w-6 h-4 rounded overflow-hidden bg-black flex-shrink-0">
+                  {slide.src && <img src={slide.src} alt="" className="w-full h-full object-cover" />}
+                </div>
+                <span className="text-[9px] text-zinc-300 truncate flex-1">{slide.name}</span>
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
+                  <button onClick={(e) => { e.stopPropagation(); onMoveSlide(slide.id, 'up') }} className="text-zinc-500 hover:text-zinc-300">
+                    <MoveUp className="w-2.5 h-2.5" />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); onMoveSlide(slide.id, 'down') }} className="text-zinc-500 hover:text-zinc-300">
+                    <MoveDown className="w-2.5 h-2.5" />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); onDeleteSlide(slide.id) }} className="text-red-400 hover:text-red-300">
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
+// === IMAGE DETAIL PANEL ===
+function ImageDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate: (updates: Partial<Scene>) => void; onDelete: () => void }) {
+  const [scale, setScale] = useState(100)
+
+  return (
+    <div className="p-2 bg-blue-900/10 border border-blue-700/20 rounded-lg space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Image className="w-3.5 h-3.5 text-blue-400" />
+          <span className="text-[10px] font-medium text-blue-200 truncate max-w-[120px]">{scene.name}</span>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onDelete} className="text-red-400 hover:text-red-300 h-5 w-5 p-0">
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <ZoomOut className="w-3 h-3 text-zinc-500" />
+        <Slider
+          value={[scale]}
+          onValueChange={([v]) => { setScale(v); onUpdate({ name: scene.name }) }}
+          min={25}
+          max={200}
+          step={5}
+          className="flex-1"
+        />
+        <ZoomIn className="w-3 h-3 text-zinc-500" />
+        <span className="text-[8px] text-zinc-400 w-7 text-right">{scale}%</span>
+      </div>
+
+      <div className="flex gap-1">
+        <Button size="sm" variant="ghost" onClick={() => setScale(100)} className="text-zinc-400 hover:text-white h-5 text-[8px] px-1.5">
+          <RotateCcw className="w-2.5 h-2.5 mr-0.5" /> Reset
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setScale(200)} className="text-zinc-400 hover:text-white h-5 text-[8px] px-1.5">
+          <Maximize2 className="w-2.5 h-2.5 mr-0.5" /> Fit
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// === VIDEO DETAIL PANEL ===
+function VideoDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate: (updates: Partial<Scene>) => void; onDelete: () => void }) {
+  const [trimStart, setTrimStart] = useState(scene.trimStart !== undefined ? String(scene.trimStart) : '')
+  const [trimEnd, setTrimEnd] = useState(scene.trimEnd !== undefined ? String(scene.trimEnd) : '')
+  const [videoPaused, setVideoPausedLocal] = useState(false)
+
+  const handleApplyTrim = () => {
+    const ts = trimStart ? parseFloat(trimStart) : undefined
+    const te = trimEnd ? parseFloat(trimEnd) : undefined
+    onUpdate({ trimStart: ts, trimEnd: te })
+    toast.success('Đã áp dụng cắt video')
+  }
+
+  const handleClearTrim = () => {
+    setTrimStart('')
+    setTrimEnd('')
+    onUpdate({ trimStart: undefined, trimEnd: undefined })
+    toast.success('Đã xoá cắt video')
+  }
+
+  const handlePauseToggle = () => {
+    const newPaused = !videoPaused
+    setVideoPausedLocal(newPaused)
+    setVideoPaused(newPaused)
+  }
+
+  return (
+    <div className="p-2 bg-purple-900/10 border border-purple-700/20 rounded-lg space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Video className="w-3.5 h-3.5 text-purple-400" />
+          <span className="text-[10px] font-medium text-purple-200 truncate max-w-[120px]">{scene.name}</span>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <Button size="sm" variant="ghost" onClick={handlePauseToggle} className="text-purple-400 hover:text-purple-300 h-5 w-5 p-0">
+            {videoPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDelete} className="text-red-400 hover:text-red-300 h-5 w-5 p-0">
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Trim controls */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-1">
+          <Scissors className="w-2.5 h-2.5 text-purple-400" />
+          <span className="text-[8px] text-purple-300">Cắt video</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[7px] text-zinc-500 w-6">Bắt đầu</span>
+          <Input
+            type="number"
+            value={trimStart}
+            onChange={(e) => setTrimStart(e.target.value)}
+            placeholder="0"
+            className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 flex-1"
+            min={0}
+            step={0.1}
+          />
+          <span className="text-[7px] text-zinc-500">giây</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[7px] text-zinc-500 w-6">Kết thúc</span>
+          <Input
+            type="number"
+            value={trimEnd}
+            onChange={(e) => setTrimEnd(e.target.value)}
+            placeholder="hết"
+            className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 flex-1"
+            min={0}
+            step={0.1}
+          />
+          <span className="text-[7px] text-zinc-500">giây</span>
+        </div>
+        <div className="flex gap-1">
+          <Button size="sm" onClick={handleApplyTrim} className="bg-purple-600 hover:bg-purple-700 text-white text-[8px] h-5 px-1.5">
+            Áp dụng
+          </Button>
+          <Button size="sm" variant="ghost" onClick={handleClearTrim} className="text-zinc-400 text-[8px] h-5 px-1.5">
+            Xoá cắt
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// === TEXT DETAIL PANEL ===
+function TextDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate: (updates: Partial<Scene>) => void; onDelete: () => void }) {
+  const [content, setContent] = useState(scene.content || '')
+  const [fontSize, setFontSize] = useState(scene.fontSize || 48)
+  const [fontColor, setFontColor] = useState(scene.fontColor || '#ffffff')
+  const [bgColor, setBgColor] = useState(scene.bgColor || '#1a1a2e')
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(scene.textAlign || 'center')
+  const [isRunning, setIsRunning] = useState(false)
+
+  const handleApply = () => {
+    onUpdate({
+      content,
+      fontSize,
+      fontColor,
+      bgColor,
+      textAlign,
+    })
+    toast.success('Đã cập nhật nội dung')
+  }
+
+  return (
+    <div className="p-2 bg-yellow-900/10 border border-yellow-700/20 rounded-lg space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Type className="w-3.5 h-3.5 text-yellow-400" />
+          <span className="text-[10px] font-medium text-yellow-200">Chữ</span>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onDelete} className="text-red-400 hover:text-red-300 h-5 w-5 p-0">
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </div>
+
+      <Textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="Nhập nội dung..."
+        className="bg-zinc-900 border-zinc-600 text-zinc-200 text-[10px] min-h-[40px] resize-y"
+        rows={2}
+      />
+
+      <div className="flex items-center gap-1">
+        <span className="text-[7px] text-zinc-500 w-6">Cỡ chữ</span>
+        <Slider
+          value={[fontSize]}
+          onValueChange={([v]) => setFontSize(v)}
+          min={12}
+          max={200}
+          step={2}
+          className="flex-1"
+        />
+        <span className="text-[8px] text-zinc-400 w-6 text-right">{fontSize}</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <span className="text-[7px] text-zinc-500">Chữ</span>
+          <input type="color" value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="w-4 h-4 rounded cursor-pointer border-0" />
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[7px] text-zinc-500">Nền</span>
+          <input type="color" value={bgColor.startsWith('rgba') || bgColor.startsWith('rgb') ? '#1a1a2e' : bgColor} onChange={(e) => setBgColor(e.target.value)} className="w-4 h-4 rounded cursor-pointer border-0" />
+        </div>
+        <div className="flex items-center gap-0.5 border-l border-zinc-700 pl-1">
+          <button onClick={() => setTextAlign('left')} className={`p-0.5 rounded ${textAlign === 'left' ? 'bg-yellow-600/30 text-yellow-300' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <AlignLeft className="w-3 h-3" />
+          </button>
+          <button onClick={() => setTextAlign('center')} className={`p-0.5 rounded ${textAlign === 'center' ? 'bg-yellow-600/30 text-yellow-300' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <AlignCenter className="w-3 h-3" />
+          </button>
+          <button onClick={() => setTextAlign('right')} className={`p-0.5 rounded ${textAlign === 'right' ? 'bg-yellow-600/30 text-yellow-300' : 'text-zinc-500 hover:text-zinc-300'}`}>
+            <AlignRight className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-1">
+        <Button size="sm" onClick={handleApply} className="bg-yellow-600 hover:bg-yellow-700 text-black text-[8px] h-5 px-1.5 font-medium">
+          Áp dụng
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setIsRunning(!isRunning)} className={`text-[8px] h-5 px-1.5 ${isRunning ? 'text-emerald-400' : 'text-zinc-400'}`}>
+          {isRunning ? 'Dừng chạy chữ' : 'Chạy chữ'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// === WEB DETAIL PANEL ===
+function WebDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate: (updates: Partial<Scene>) => void; onDelete: () => void }) {
+  const [zoom, setZoom] = useState(100)
+  const [url, setUrl] = useState(scene.url || '')
+
+  return (
+    <div className="p-2 bg-cyan-900/10 border border-cyan-700/20 rounded-lg space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Globe className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="text-[10px] font-medium text-cyan-200 truncate max-w-[120px]">{scene.name}</span>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onDelete} className="text-red-400 hover:text-red-300 h-5 w-5 p-0">
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <span className="text-[7px] text-zinc-500">URL</span>
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 flex-1"
+          placeholder="https://..."
+          onKeyDown={(e) => { if (e.key === 'Enter') { onUpdate({ url }); toast.success('Đã cập nhật URL') } }}
+        />
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <ZoomOut className="w-3 h-3 text-zinc-500" />
+        <Slider
+          value={[zoom]}
+          onValueChange={([v]) => setZoom(v)}
+          min={25}
+          max={200}
+          step={10}
+          className="flex-1"
+        />
+        <ZoomIn className="w-3 h-3 text-zinc-500" />
+        <span className="text-[8px] text-zinc-400 w-7 text-right">{zoom}%</span>
+      </div>
+
+      <div className="flex gap-1">
+        <Button size="sm" variant="ghost" onClick={() => setZoom(100)} className="text-zinc-400 hover:text-white h-5 text-[8px] px-1.5">
+          <RotateCcw className="w-2.5 h-2.5 mr-0.5" /> Reset zoom
+        </Button>
+        <Button size="sm" variant="ghost" className="text-cyan-400 hover:text-cyan-300 h-5 text-[8px] px-1.5">
+          <Maximize2 className="w-2.5 h-2.5 mr-0.5" /> Tương tác
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// === MAIN SCENE LIST ===
 export function SceneList() {
-  const { scenes, currentSceneIndex, setCurrentSceneIndex, removeScene, reorderScenes, addScene, clearAllScenes, updateScene } =
-    usePresentationStore()
+  const {
+    scenes,
+    currentSceneIndex,
+    nextSceneIndex,
+    selectAsNext,
+    removeScene,
+    reorderScenes,
+    addScene,
+    clearAllScenes,
+    updateScene,
+    moveNextToPosition,
+  } = usePresentationStore()
+
   const [isDragOver, setIsDragOver] = useState(false)
-  const [expandedPptxGroups, setExpandedPptxGroups] = useState<Set<string>>(new Set())
-  const [isListExpanded, setIsListExpanded] = useState(false)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -324,12 +685,7 @@ export function SceneList() {
     for (const file of files) {
       if (file.type.startsWith('image/')) {
         const url = URL.createObjectURL(file)
-        addScene({
-          type: 'image',
-          name: file.name,
-          src: url,
-          thumbnail: url,
-        })
+        addScene({ type: 'image', name: file.name, src: url, thumbnail: url })
       } else if (file.type.startsWith('video/')) {
         await addVideoScene(file)
       } else if (file.name.endsWith('.pptx')) {
@@ -346,8 +702,6 @@ export function SceneList() {
               pptxFileName: file.name,
             })
           }
-          // Auto-expand new PPTX groups
-          setExpandedPptxGroups((prev) => new Set([...prev, pptxFileId]))
           toast.success(`Đã trích xuất ${slides.length} slide từ "${file.name}"`)
         } catch (err) {
           console.error('Error parsing PPTX:', err)
@@ -365,12 +719,7 @@ export function SceneList() {
     for (const file of Array.from(files)) {
       if (file.type.startsWith('image/')) {
         const url = URL.createObjectURL(file)
-        addScene({
-          type: 'image',
-          name: file.name,
-          src: url,
-          thumbnail: url,
-        })
+        addScene({ type: 'image', name: file.name, src: url, thumbnail: url })
       } else if (file.type.startsWith('video/')) {
         await addVideoScene(file)
       } else if (file.name.endsWith('.pptx')) {
@@ -387,7 +736,6 @@ export function SceneList() {
               pptxFileName: file.name,
             })
           }
-          setExpandedPptxGroups((prev) => new Set([...prev, pptxFileId]))
           toast.success(`Đã trích xuất ${slides.length} slide từ "${file.name}"`)
         } catch (err) {
           console.error('Error parsing PPTX:', err)
@@ -398,32 +746,50 @@ export function SceneList() {
     e.target.value = ''
   }, [addScene, addVideoScene])
 
-  // Toggle PPTX group expand/collapse
-  const togglePptxGroup = useCallback((groupId: string) => {
-    setExpandedPptxGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupId)) {
-        next.delete(groupId)
-      } else {
-        next.add(groupId)
-      }
-      return next
-    })
-  }, [])
+  // Handle clicking a grid item → set it as NEXT
+  const handleItemClick = useCallback((index: number) => {
+    selectAsNext(index)
+    setSelectedItemId(scenes[index]?.id || null)
+  }, [selectAsNext, scenes])
 
-  // Delete all slides in a PPTX group
+  // Handle editing order number
+  const handleOrderChange = useCallback((sceneId: string, newOrder: number) => {
+    const idx = scenes.findIndex((s) => s.id === sceneId)
+    if (idx >= 0 && newOrder >= 1 && newOrder <= scenes.length) {
+      reorderScenes(idx, newOrder - 1)
+    }
+  }, [scenes, reorderScenes])
+
+  // Delete PPTX group
   const deletePptxGroup = useCallback((groupId: string) => {
     const groupSlides = scenes.filter((s) => s.pptxFileId === groupId)
     for (const slide of groupSlides) {
       removeScene(slide.id)
     }
+    if (selectedItemId && groupSlides.some(s => s.id === selectedItemId)) {
+      setSelectedItemId(null)
+    }
     toast.success(`Đã xoá ${groupSlides.length} slide`)
-  }, [scenes, removeScene])
+  }, [scenes, removeScene, selectedItemId])
 
-  // Build grouped scene list
-  // Group PPTX slides by pptxFileId, show other scenes normally
-  const pptxGroups = new Map<string, { fileName: string; slides: Scene[] }>()
-  for (const scene of scenes) {
+  // Move slide within PPTX group
+  const handleMoveSlide = useCallback((slideId: string, direction: 'up' | 'down') => {
+    const idx = scenes.findIndex((s) => s.id === slideId)
+    if (idx < 0) return
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (targetIdx >= 0 && targetIdx < scenes.length) {
+      reorderScenes(idx, targetIdx)
+    }
+  }, [scenes, reorderScenes])
+
+  // Get the selected scene
+  const selectedScene = selectedItemId ? scenes.find((s) => s.id === selectedItemId) : null
+
+  // Build the display list (group PPTX slides together in the grid)
+  // For the grid, each item (including PPTX groups) is one box
+  const pptxGroups = new Map<string, { fileName: string; slides: Scene[]; firstIndex: number }>()
+  for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i]
     if (scene.type === 'pptx-slide' && scene.pptxFileId) {
       const group = pptxGroups.get(scene.pptxFileId)
       if (group) {
@@ -432,58 +798,58 @@ export function SceneList() {
         pptxGroups.set(scene.pptxFileId, {
           fileName: scene.pptxFileName || scene.pptxFileId,
           slides: [scene],
+          firstIndex: i,
         })
       }
     }
   }
 
-  // Build the ordered render list: iterate through scenes, group PPTX together
-  const renderedItems: Array<{
+  // Build render items for the grid
+  const gridItems: Array<{
     type: 'scene' | 'pptx-group'
     scene?: Scene
     groupId?: string
     groupFileName?: string
-    groupSlides?: Scene[]
-    index: number
+    groupFirstSlide?: Scene
+    displayIndex: number
+    sceneIndex: number
   }> = []
 
-  const seenPptxGroups = new Set<string>()
+  const seenGroups = new Set<string>()
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i]
     if (scene.type === 'pptx-slide' && scene.pptxFileId) {
-      if (!seenPptxGroups.has(scene.pptxFileId)) {
-        seenPptxGroups.add(scene.pptxFileId)
+      if (!seenGroups.has(scene.pptxFileId)) {
+        seenGroups.add(scene.pptxFileId)
         const group = pptxGroups.get(scene.pptxFileId)
-        if (group) {
-          renderedItems.push({
-            type: 'pptx-group',
-            groupId: scene.pptxFileId,
-            groupFileName: group.fileName,
-            groupSlides: group.slides,
-            index: i,
-          })
-        }
+        gridItems.push({
+          type: 'pptx-group',
+          groupId: scene.pptxFileId,
+          groupFileName: group?.fileName,
+          groupFirstSlide: group?.slides[0],
+          displayIndex: i + 3, // +3 because 1=current, 2=next
+          sceneIndex: i,
+        })
       }
-      // Skip individual slides - they're part of the group
     } else {
-      renderedItems.push({
+      gridItems.push({
         type: 'scene',
         scene,
-        index: i,
+        displayIndex: i + 3, // +3 because 1=current, 2=next
+        sceneIndex: i,
       })
     }
   }
 
-  // Build visible scene IDs for SortableContext (only items that are actually rendered)
+  // Build visible scene IDs for SortableContext
   const visibleSceneIds: string[] = []
-  for (const item of renderedItems) {
+  for (const item of gridItems) {
     if (item.type === 'scene' && item.scene) {
       visibleSceneIds.push(item.scene.id)
     } else if (item.type === 'pptx-group' && item.groupId) {
-      if (expandedPptxGroups.has(item.groupId) && item.groupSlides) {
-        for (const slide of item.groupSlides) {
-          visibleSceneIds.push(slide.id)
-        }
+      // Use the first slide's ID for the group box
+      if (item.groupFirstSlide) {
+        visibleSceneIds.push(item.groupFirstSlide.id)
       }
     }
   }
@@ -506,28 +872,17 @@ export function SceneList() {
         </div>
       )}
 
-      {/* Collapsible header */}
-      <div className="flex items-center gap-1.5 mb-1">
-        <button
-          onClick={() => setIsListExpanded(!isListExpanded)}
-          className="flex items-center gap-1.5 flex-1 min-w-0 hover:bg-zinc-800/50 rounded px-1 py-0.5 transition-colors"
-        >
-          {isListExpanded ? (
-            <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-          ) : (
-            <ChevronRightIcon className="w-3 h-3 text-zinc-500 flex-shrink-0" />
-          )}
-          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-            Danh sách
-          </h3>
-          {scenes.length > 0 && (
-            <span className="text-[9px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded-full">
-              {scenes.length} mục
-            </span>
-          )}
-        </button>
+      {/* Header */}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex-1">
+          Danh sách
+        </h3>
+        {scenes.length > 0 && (
+          <span className="text-[9px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded-full">
+            {scenes.length} mục
+          </span>
+        )}
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          {/* Clear all button */}
           {scenes.length > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -537,6 +892,7 @@ export function SceneList() {
                   onClick={() => {
                     if (confirm(`Xoá tất cả ${scenes.length} thành phần?`)) {
                       clearAllScenes()
+                      setSelectedItemId(null)
                       toast.success('Đã xoá tất cả thành phần')
                     }
                   }}
@@ -550,7 +906,6 @@ export function SceneList() {
               </TooltipContent>
             </Tooltip>
           )}
-          {/* Quick batch upload button */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -578,79 +933,120 @@ export function SceneList() {
         </div>
       </div>
 
-      {/* Collapsible content */}
-      {isListExpanded ? (
-        <ScrollArea className="flex-1 min-h-0">
-          {scenes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
-              <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
-              <p className="text-xs">Chưa có thành phần nào</p>
-              <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={visibleSceneIds} strategy={verticalListSortingStrategy}>
-                <div className="space-y-0.5">
-                  {renderedItems.map((item) => {
-                    if (item.type === 'pptx-group' && item.groupId) {
-                      const isExpanded = expandedPptxGroups.has(item.groupId)
-                      return (
-                        <div key={`group-${item.groupId}`}>
-                          <PptxGroupItem
-                            fileName={item.groupFileName || 'PPTX'}
-                            slideCount={item.groupSlides?.length || 0}
-                            isExpanded={isExpanded}
-                            onToggle={() => togglePptxGroup(item.groupId!)}
-                            onDeleteGroup={() => deletePptxGroup(item.groupId!)}
-                            groupId={item.groupId}
-                          />
-                          {isExpanded && item.groupSlides && (
-                            <div className="ml-4 mt-0.5 space-y-0.5">
-                              {item.groupSlides.map((slide) => {
-                                const globalIdx = scenes.findIndex((s) => s.id === slide.id)
-                                return (
-                                  <SortableSceneItem
-                                    key={slide.id}
-                                    scene={slide}
-                                    isActive={globalIdx === currentSceneIndex}
-                                    onClick={() => setCurrentSceneIndex(globalIdx)}
-                                    onDelete={() => {
-                                      removeScene(slide.id)
-                                      toast.success(`Đã xoá "${slide.name}"`)
-                                    }}
-                                  />
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    }
+      {/* Grid of scene boxes - 3 per row */}
+      <ScrollArea className="flex-1 min-h-0">
+        {scenes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
+            <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
+            <p className="text-xs">Chưa có thành phần nào</p>
+            <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
+          </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={visibleSceneIds} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-3 gap-1.5">
+                {gridItems.map((item) => {
+                  if (item.type === 'pptx-group' && item.groupId) {
+                    const firstSlide = item.groupFirstSlide
+                    const isSelected = selectedItemId === item.groupId || 
+                      (firstSlide && pptxGroups.get(item.groupId)?.slides.some(s => s.id === selectedItemId))
+                    const isNext = scenes.findIndex((s) => s.pptxFileId === item.groupId) === nextSceneIndex ||
+                      (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === nextSceneIndex)
+                    const isCurrent = scenes.findIndex((s) => s.pptxFileId === item.groupId) === currentSceneIndex ||
+                      (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === currentSceneIndex)
 
-                    if (item.type === 'scene' && item.scene) {
-                      return (
-                        <SortableSceneItem
-                          key={item.scene.id}
-                          scene={item.scene}
-                          isActive={item.index === currentSceneIndex}
-                          onClick={() => setCurrentSceneIndex(item.index)}
-                          onDelete={() => {
-                            removeScene(item.scene!.id)
-                            toast.success(`Đã xoá "${item.scene!.name}"`)
-                          }}
-                        />
-                      )
-                    }
+                    return (
+                      <SortableGridItem
+                        key={item.groupId}
+                        scene={firstSlide || { id: item.groupId, type: 'pptx-slide', name: item.groupFileName || 'PPTX', order: 0 }}
+                        displayIndex={item.displayIndex}
+                        isNext={isNext}
+                        isCurrent={isCurrent}
+                        onClick={() => {
+                          const idx = scenes.findIndex((s) => s.pptxFileId === item.groupId)
+                          if (idx >= 0) {
+                            selectAsNext(idx)
+                            setSelectedItemId(item.groupId)
+                          }
+                        }}
+                        onDelete={() => deletePptxGroup(item.groupId)}
+                      />
+                    )
+                  }
 
-                    return null
-                  })}
-                </div>
-              </SortableContext>
-            </DndContext>
+                  if (item.type === 'scene' && item.scene) {
+                    const isNext = item.sceneIndex === nextSceneIndex
+                    const isCurrent = item.sceneIndex === currentSceneIndex
+
+                    return (
+                      <SortableGridItem
+                        key={item.scene.id}
+                        scene={item.scene}
+                        displayIndex={item.displayIndex}
+                        isNext={isNext}
+                        isCurrent={isCurrent}
+                        onClick={() => handleItemClick(item.sceneIndex)}
+                        onDelete={() => {
+                          removeScene(item.scene!.id)
+                          if (selectedItemId === item.scene!.id) setSelectedItemId(null)
+                          toast.success(`Đã xoá "${item.scene!.name}"`)
+                        }}
+                      />
+                    )
+                  }
+
+                  return null
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+      </ScrollArea>
+
+      {/* Detail panel - shown when an item is selected */}
+      {selectedScene && (
+        <div className="mt-1.5 border-t border-zinc-800 pt-1.5">
+          {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
+            <PptxDetailPanel
+              scenes={scenes}
+              pptxGroupId={selectedScene.pptxFileId}
+              currentSceneIndex={currentSceneIndex}
+              nextSceneIndex={nextSceneIndex}
+              onSelectSlide={(idx) => selectAsNext(idx)}
+              onDeleteSlide={(id) => { removeScene(id); toast.success('Đã xoá slide') }}
+              onDeleteGroup={() => { if (selectedScene.pptxFileId) deletePptxGroup(selectedScene.pptxFileId) }}
+              onMoveSlide={handleMoveSlide}
+            />
           )}
-        </ScrollArea>
-      ) : (
-        <div className="flex-1 min-h-0" />
+          {selectedScene.type === 'image' && (
+            <ImageDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá ảnh') }}
+            />
+          )}
+          {selectedScene.type === 'video' && (
+            <VideoDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá video') }}
+            />
+          )}
+          {selectedScene.type === 'text' && (
+            <TextDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá chữ') }}
+            />
+          )}
+          {selectedScene.type === 'web' && (
+            <WebDetailPanel
+              scene={selectedScene}
+              onUpdate={(updates) => updateScene(selectedScene.id, updates)}
+              onDelete={() => { removeScene(selectedScene.id); setSelectedItemId(null); toast.success('Đã xoá web') }}
+            />
+          )}
+        </div>
       )}
     </div>
   )
@@ -704,7 +1100,6 @@ export function TextOverlayPanel() {
     usePresentationStore()
   const [newText, setNewText] = useState('')
   const [showForm, setShowForm] = useState(false)
-  // Form fields
   const [formFontSize, setFormFontSize] = useState(32)
   const [formFontColor, setFormFontColor] = useState('#ffffff')
   const [formBgColor, setFormBgColor] = useState('rgba(0,0,0,0.7)')
@@ -758,7 +1153,6 @@ export function TextOverlayPanel() {
         </Button>
       </div>
 
-      {/* Template presets row */}
       <div className="flex gap-0.5 mb-1.5 flex-wrap">
         {OVERLAY_TEMPLATES.map((template) => (
           <button
@@ -811,12 +1205,7 @@ export function TextOverlayPanel() {
           <div className="grid grid-cols-2 gap-1">
             <div className="flex items-center gap-1">
               <span className="text-[8px] text-zinc-500">Chữ</span>
-              <input
-                type="color"
-                value={formFontColor}
-                onChange={(e) => setFormFontColor(e.target.value)}
-                className="w-5 h-5 rounded cursor-pointer border-0"
-              />
+              <input type="color" value={formFontColor} onChange={(e) => setFormFontColor(e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0" />
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[8px] text-zinc-500">Nền</span>
@@ -829,19 +1218,10 @@ export function TextOverlayPanel() {
             </div>
           </div>
           <div className="flex gap-1">
-            <Button
-              size="sm"
-              onClick={handleAdd}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2"
-            >
+            <Button size="sm" onClick={handleAdd} className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2">
               Thêm
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={resetForm}
-              className="text-zinc-400 text-[9px] h-5 px-2"
-            >
+            <Button size="sm" variant="ghost" onClick={resetForm} className="text-zinc-400 text-[9px] h-5 px-2">
               Hủy
             </Button>
           </div>
@@ -856,23 +1236,13 @@ export function TextOverlayPanel() {
         ) : (
           <div className="space-y-0.5">
             {textOverlays.map((overlay) => (
-              <div
-                key={overlay.id}
-                className="flex items-center gap-1 px-1.5 py-1 rounded-md bg-zinc-800/50 group"
-              >
+              <div key={overlay.id} className="flex items-center gap-1 px-1.5 py-1 rounded-md bg-zinc-800/50 group">
                 <button onClick={() => toggleTextOverlay(overlay.id)} className="flex-shrink-0">
-                  {overlay.visible ? (
-                    <Eye className="w-3 h-3 text-emerald-400" />
-                  ) : (
-                    <EyeOff className="w-3 h-3 text-zinc-500" />
-                  )}
+                  {overlay.visible ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-zinc-500" />}
                 </button>
                 <span className="text-[10px] text-zinc-300 truncate flex-1">{overlay.text}</span>
                 <span className="text-[8px] text-zinc-600">{overlay.fontSize}px</span>
-                <button
-                  onClick={() => removeTextOverlay(overlay.id)}
-                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
-                >
+                <button onClick={() => removeTextOverlay(overlay.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -885,8 +1255,7 @@ export function TextOverlayPanel() {
 }
 
 /**
- * Control Panel - with projection buttons at bottom
- * Now includes: per-scene transition, video pause/play, all existing controls
+ * Control Panel - with projection buttons
  */
 const SCREEN_PRESETS = [
   { label: '16:9 (1920×1080)', value: '16:9', width: 1920, height: 1080 },
@@ -899,6 +1268,7 @@ export function ControlPanel() {
   const {
     scenes,
     currentSceneIndex,
+    nextSceneIndex,
     isLive,
     blackScreen,
     goNext,
@@ -933,7 +1303,7 @@ export function ControlPanel() {
   // Video pause state
   const [videoPaused, setVideoPausedLocal] = useState(false)
 
-  // Screen size preset matching
+  // Screen size
   const [screenPreset, setScreenPreset] = useState<string>(() => {
     const match = SCREEN_PRESETS.find((p) => p.width === screenSize?.width && p.height === screenSize?.height)
     return match ? match.value : 'custom'
@@ -945,8 +1315,7 @@ export function ControlPanel() {
   const [trimStartInput, setTrimStartInput] = useState<string>('')
   const [trimEndInput, setTrimEndInput] = useState<string>('')
 
-  // Sync per-scene transition state when current scene changes
-  // Using the "sync from props during render" pattern to avoid setState-in-effect lint
+  // Sync state when current scene changes
   const [prevTransitionSceneId, setPrevTransitionSceneId] = useState<string | undefined>(currentScene?.id)
   if (currentScene?.id !== prevTransitionSceneId) {
     setPrevTransitionSceneId(currentScene?.id)
@@ -964,20 +1333,13 @@ export function ControlPanel() {
     setVideoPausedLocal(false)
   }
 
-  // Per-scene transition handlers
   const handleToggleCustomTransition = (checked: boolean) => {
     setUseCustomTransition(checked)
     if (currentScene) {
       if (checked) {
-        updateScene(currentScene.id, {
-          sceneTransitionType: customTransitionType,
-          sceneTransitionDuration: customTransitionDuration,
-        })
+        updateScene(currentScene.id, { sceneTransitionType: customTransitionType, sceneTransitionDuration: customTransitionDuration })
       } else {
-        updateScene(currentScene.id, {
-          sceneTransitionType: undefined,
-          sceneTransitionDuration: undefined,
-        })
+        updateScene(currentScene.id, { sceneTransitionType: undefined, sceneTransitionDuration: undefined })
       }
     }
   }
@@ -996,7 +1358,6 @@ export function ControlPanel() {
     }
   }
 
-  // Video pause/play handler
   const handleVideoPauseToggle = () => {
     const newPaused = !videoPaused
     setVideoPausedLocal(newPaused)
@@ -1019,10 +1380,10 @@ export function ControlPanel() {
     setScreenSize({ width: w, height: h })
     setCustomWidth(w)
     setCustomHeight(h)
-    toast.success(`Kích thước màn hình: ${w}×${h}`)
+    toast.success(`Kích thước: ${w}×${h}`)
   }
 
-  // === REMOTE CONNECTION INFO ===
+  // === REMOTE CONNECTION ===
   const [localIp, setLocalIp] = useState<string>(typeof window !== 'undefined' ? window.location.hostname : '')
   const [showRemoteInfo, setShowRemoteInfo] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -1053,10 +1414,6 @@ export function ControlPanel() {
     }
   }
 
-  const openOutputInNewTab = () => {
-    window.open('/output', '_blank')
-  }
-
   // === PROJECTION BUTTONS ===
   const handleStartProjection = async () => {
     goLive()
@@ -1068,7 +1425,7 @@ export function ControlPanel() {
     goLive()
     openOutputWindow()
     setShowRemoteInfo(true)
-    toast.success('Đã bật chiếu online - chia sẻ URL cho thiết bị khác')
+    toast.success('Đã bật chiếu online')
   }
 
   const handleStopAll = () => {
@@ -1156,27 +1513,15 @@ export function ControlPanel() {
         Điều khiển
       </h3>
 
-      {/* Navigation row */}
+      {/* Navigation */}
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={goPrev}
-          disabled={currentSceneIndex <= 0}
-          className="text-zinc-400 hover:text-white h-7 w-7 p-0"
-        >
+        <Button size="sm" variant="ghost" onClick={goPrev} disabled={currentSceneIndex <= 0} className="text-zinc-400 hover:text-white h-7 w-7 p-0">
           <ChevronLeft className="w-4 h-4" />
         </Button>
         <span className="text-xs text-zinc-400 min-w-[42px] text-center tabular-nums">
           {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : '0/0'}
         </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={goNext}
-          disabled={currentSceneIndex >= scenes.length - 1}
-          className="text-zinc-400 hover:text-white h-7 w-7 p-0"
-        >
+        <Button size="sm" variant="ghost" onClick={goNext} disabled={currentSceneIndex >= scenes.length - 1} className="text-zinc-400 hover:text-white h-7 w-7 p-0">
           <ChevronRight className="w-4 h-4" />
         </Button>
 
@@ -1185,448 +1530,134 @@ export function ControlPanel() {
         {/* Black screen */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={toggleBlackScreen}
-              className={`h-7 gap-1 px-2 ${blackScreen ? 'text-red-400 bg-red-400/10' : 'text-zinc-400 hover:text-white'}`}
-            >
-              <Square className="w-3.5 h-3.5" />
-              <span className="text-[10px]">{blackScreen ? 'Bật hình' : 'Đen'}</span>
+            <Button size="sm" variant="ghost" onClick={toggleBlackScreen} className={`h-7 w-7 p-0 ${blackScreen ? 'text-red-400' : 'text-zinc-400'}`}>
+              <Square className="w-4 h-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Đen/Bật màn hình (Phím B)
+            {blackScreen ? 'Bật hình' : 'Màn hình đen'}
           </TooltipContent>
         </Tooltip>
-
-        {/* Video pause/play button - only when video scene is active */}
-        {isVideoScene && isLive && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleVideoPauseToggle}
-                className={`h-7 gap-1 px-2 ${videoPaused ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-400 hover:text-white'}`}
-              >
-                {videoPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-                <span className="text-[10px]">{videoPaused ? 'Phát' : 'Dừng'}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-              {videoPaused ? 'Phát video trên màn hình chiếu' : 'Tạm dừng video trên màn hình chiếu'}
-            </TooltipContent>
-          </Tooltip>
-        )}
       </div>
 
-      {/* Per-scene transition row */}
-      {currentScene && (
-        <div className="bg-zinc-800/40 rounded-md p-1.5 space-y-1 border border-zinc-700/30">
-          <div className="flex items-center gap-1.5">
-            <Checkbox
-              id="custom-transition"
-              checked={useCustomTransition}
-              onCheckedChange={(checked) => handleToggleCustomTransition(!!checked)}
-              className="h-3 w-3 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
-            />
-            <label htmlFor="custom-transition" className="text-[9px] text-zinc-400 cursor-pointer select-none">
-              Hiệu ứng riêng cho slide này
-            </label>
-          </div>
-          {useCustomTransition && (
-            <div className="flex items-center gap-1.5 pl-1">
-              <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
-              <Select value={customTransitionType} onValueChange={(v) => handleCustomTransitionTypeChange(v as TransitionType)}>
-                <SelectTrigger className="h-5 flex-1 min-w-0 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px]">
-                  <SelectValue placeholder="Hiệu ứng" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[200px] overflow-y-auto">
-                  {TRANSITION_GROUPS.map((group) => (
-                    <SelectGroup key={group.key}>
-                      <SelectLabel className="text-[8px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1">
-                        {group.label}
-                      </SelectLabel>
-                      {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
-                        <SelectItem
-                          key={opt.value}
-                          value={opt.value}
-                          className="text-zinc-300 text-[9px] focus:bg-zinc-700 focus:text-white"
-                        >
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px]">{opt.icon}</span>
-                            <span>{opt.label}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-              {customTransitionType !== 'none' && (
-                <div className="flex items-center gap-0.5 bg-zinc-900 rounded px-1 h-5">
-                  <Clock className="w-2 h-2 text-zinc-500 flex-shrink-0" />
-                  <Slider
-                    value={[customTransitionDuration]}
-                    onValueChange={([v]) => handleCustomTransitionDurationChange(v)}
-                    min={200}
-                    max={2000}
-                    step={100}
-                    className="w-10"
-                  />
-                  <span className="text-[8px] text-zinc-500 min-w-[24px]">{customTransitionDuration}ms</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Global transition row */}
-      <div className="flex items-center gap-1.5">
-        <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
-        <Select value={transitionType} onValueChange={(v) => setTransitionType(v as TransitionType)}>
-          <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            <SelectValue placeholder="Hiệu ứng" />
-          </SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[280px] overflow-y-auto">
-            {TRANSITION_GROUPS.map((group) => (
-              <SelectGroup key={group.key}>
-                <SelectLabel className="text-[9px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1.5">
-                  {group.label}
-                </SelectLabel>
-                {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
-                  <SelectItem
-                    key={opt.value}
-                    value={opt.value}
-                    className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs">{opt.icon}</span>
-                      <span>{opt.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {transitionType !== 'none' && (
-          <div className="flex items-center gap-1 bg-zinc-800 rounded px-1.5 h-6">
-            <Clock className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
-            <Slider
-              value={[transitionDuration]}
-              onValueChange={([v]) => setTransitionDuration(v)}
-              min={200}
-              max={2000}
-              step={100}
-              className="w-14"
-            />
-            <span className="text-[9px] text-zinc-500 min-w-[28px]">{transitionDuration}ms</span>
-          </div>
-        )}
-      </div>
-
-      {/* Video volume (only when current scene is video) */}
-      {isVideoScene && (
+      {/* Per-scene transition */}
+      <div className="space-y-1">
         <div className="flex items-center gap-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setVideoMuted(!videoMuted)}
-                className="text-zinc-400 hover:text-white transition-colors"
-              >
-                {videoMuted ? (
-                  <VolumeX className="w-3.5 h-3.5 text-red-400" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-              {videoMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
-            </TooltipContent>
-          </Tooltip>
-          <Slider
-            value={[videoMuted ? 0 : videoVolume * 100]}
-            onValueChange={([v]) => {
-              setVideoVolume(v / 100)
-              if (v > 0) setVideoMuted(false)
-            }}
-            min={0}
-            max={100}
-            step={5}
-            className="w-20"
-          />
-          <span className="text-[9px] text-zinc-500">{videoMuted ? '0%' : `${Math.round(videoVolume * 100)}%`}</span>
+          <input type="checkbox" checked={useCustomTransition} onChange={(e) => handleToggleCustomTransition(e.target.checked)} className="rounded" />
+          <span className="text-[9px] text-zinc-400">Hiệu ứng riêng cho slide này</span>
         </div>
-      )}
+        {useCustomTransition && (
+          <div className="space-y-1 pl-4">
+            <Select value={customTransitionType} onValueChange={(v) => handleCustomTransitionTypeChange(v as TransitionType)}>
+              <SelectTrigger className="h-6 bg-zinc-900 border-zinc-700 text-zinc-300 text-[9px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[200px]">
+                {TRANSITION_GROUPS.map((group) => (
+                  <SelectGroup key={group.key}>
+                    <SelectLabel className="text-[9px] text-zinc-500">{group.label}</SelectLabel>
+                    {TRANSITION_OPTIONS.filter((o) => o.group === group.key).map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-[9px]">
+                        {opt.icon} {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] text-zinc-500">Tốc độ</span>
+              <Slider value={[customTransitionDuration]} onValueChange={([v]) => handleCustomTransitionDurationChange(v)} min={100} max={3000} step={50} className="flex-1" />
+              <span className="text-[8px] text-zinc-400 w-8 text-right">{customTransitionDuration}ms</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-      {/* Video trim controls (only when current scene is video) */}
+      {/* Video controls (only when current is video) */}
       {isVideoScene && (
-        <div className="bg-zinc-800/60 rounded-md p-1.5 space-y-1.5 border border-zinc-700/50">
-          <div className="flex items-center gap-1">
-            <Scissors className="w-3 h-3 text-purple-400" />
-            <span className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">Cắt video</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-zinc-500 w-8">Bắt đầu</span>
-            <Input
-              type="number"
-              value={trimStartInput}
-              onChange={(e) => setTrimStartInput(e.target.value)}
-              placeholder="0"
-              className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
-              min={0}
-              step={0.5}
-            />
-            <span className="text-[9px] text-zinc-500">giây</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-zinc-500 w-8">Kết thúc</span>
-            <Input
-              type="number"
-              value={trimEndInput}
-              onChange={(e) => setTrimEndInput(e.target.value)}
-              placeholder="cuối"
-              className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
-              min={0}
-              step={0.5}
-            />
-            <span className="text-[9px] text-zinc-500">giây</span>
-          </div>
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              onClick={handleApplyTrim}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2 flex-1"
-            >
-              Áp dụng
+        <div className="space-y-1 p-1.5 bg-zinc-800/50 rounded-md">
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="ghost" onClick={handleVideoPauseToggle} className="text-purple-400 h-5 w-5 p-0">
+              {videoPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleClearTrim}
-              className="text-zinc-400 hover:text-red-400 text-[9px] h-5 px-2"
-            >
-              Xoá cắt
-            </Button>
+            <span className="text-[8px] text-zinc-500">Video</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[7px] text-zinc-500">Cắt</span>
+            <Input type="number" value={trimStartInput} onChange={(e) => setTrimStartInput(e.target.value)} placeholder="0" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
+            <span className="text-[7px] text-zinc-600">→</span>
+            <Input type="number" value={trimEndInput} onChange={(e) => setTrimEndInput(e.target.value)} placeholder="hết" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
+          </div>
+          <div className="flex items-center gap-1">
+            <Volume2 className="w-3 h-3 text-zinc-500" />
+            <Slider value={[videoVolume * 100]} onValueChange={([v]) => setVideoVolume(v / 100)} min={0} max={100} className="flex-1" />
+            <button onClick={() => setVideoMuted(!videoMuted)} className="text-zinc-400 hover:text-white">
+              {videoMuted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3" />}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Screen size selector */}
-      <div className="flex items-center gap-1.5">
-        <MonitorUp className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+      {/* Screen size */}
+      <div className="space-y-1">
         <Select value={screenPreset} onValueChange={handleScreenPresetChange}>
-          <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            <SelectValue placeholder="Kích thước" />
+          <SelectTrigger className="h-6 bg-zinc-900 border-zinc-700 text-zinc-300 text-[9px]">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent className="bg-zinc-800 border-zinc-700">
-            {SCREEN_PRESETS.map((preset) => (
-              <SelectItem key={preset.value} value={preset.value} className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white">
-                {preset.label}
-              </SelectItem>
+            {SCREEN_PRESETS.map((p) => (
+              <SelectItem key={p.value} value={p.value} className="text-[9px]">{p.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         {screenPreset === 'custom' && (
           <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              value={customWidth}
-              onChange={(e) => setCustomWidth(Number(e.target.value))}
-              className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
-              min={320}
-              max={3840}
-            />
-            <span className="text-zinc-600 text-[9px]">×</span>
-            <Input
-              type="number"
-              value={customHeight}
-              onChange={(e) => setCustomHeight(Number(e.target.value))}
-              className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
-              min={240}
-              max={2160}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCustomSizeChange}
-              className="h-6 w-6 p-0 text-emerald-400 hover:text-emerald-300"
-            >
-              <span className="text-[9px]">✓</span>
-            </Button>
+            <Input type="number" value={customWidth} onChange={(e) => setCustomWidth(Number(e.target.value))} className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 w-16" min={320} max={3840} />
+            <span className="text-[8px] text-zinc-600">×</span>
+            <Input type="number" value={customHeight} onChange={(e) => setCustomHeight(Number(e.target.value))} className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 w-16" min={240} max={2160} />
+            <Button size="sm" onClick={handleCustomSizeChange} className="h-5 text-[8px] px-1.5 bg-zinc-700 hover:bg-zinc-600">OK</Button>
           </div>
-        )}
-        {screenPreset !== 'custom' && (
-          <span className="text-[9px] text-zinc-600">{screenSize?.width}×{screenSize?.height}</span>
         )}
       </div>
 
-      {/* === PROJECTION BUTTONS === */}
-      <div className="flex items-center gap-1 pt-1 border-t border-zinc-800">
-        <Button
-          size="sm"
-          onClick={isLive ? handleStopAll : handleStartProjection}
-          className={`h-7 gap-1 px-3 flex-1 ${
-            isLive
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }`}
-        >
-          <MonitorUp className="w-3.5 h-3.5" />
-          {isLive ? (
-            <>
-              <Pause className="w-3 h-3" />
-              <span className="text-[10px]">Dừng</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3 h-3" />
-              <span className="text-[10px]">Chiếu</span>
-            </>
-          )}
+      {/* Projection buttons */}
+      <div className="flex gap-1">
+        <Button size="sm" onClick={handleStartProjection} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-7">
+          <MonitorUp className="w-3 h-3 mr-1" /> Chiếu
         </Button>
-
-        <Button
-          size="sm"
-          onClick={handleStartOnlineProjection}
-          className="h-7 gap-1 px-3 flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
-          disabled={isLive}
-        >
-          <GlobeIcon className="w-3.5 h-3.5" />
-          <span className="text-[10px]">Online</span>
+        <Button size="sm" onClick={handleStartOnlineProjection} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white text-[9px] h-7">
+          Online
         </Button>
-
-        {isLive && (
-          <Button
-            size="sm"
-            onClick={handleStopAll}
-            className="h-7 gap-1 px-3 bg-red-800 hover:bg-red-900 text-white"
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span className="text-[10px]">Tắt hết</span>
-          </Button>
-        )}
+        <Button size="sm" variant="ghost" onClick={handleStopAll} disabled={!isLive} className="text-red-400 hover:text-red-300 text-[9px] h-7">
+          Tắt hết
+        </Button>
       </div>
 
-      {/* Project save/load + remote connection row */}
-      <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                saveProject()
-                toast.success('Đã lưu dự án')
-              }}
-              className="text-zinc-500 hover:text-emerald-400 h-6 gap-1 px-2"
-            >
-              <Save className="w-3 h-3" />
-              <span className="text-[9px]">Lưu</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Lưu dự án vào trình duyệt
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                loadProject()
-                toast.success('Đã mở dự án')
-              }}
-              className="text-zinc-500 hover:text-cyan-400 h-6 gap-1 px-2"
-            >
-              <FolderOpen className="w-3 h-3" />
-              <span className="text-[9px]">Mở</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Mở dự án đã lưu
-          </TooltipContent>
-        </Tooltip>
-
-        <div className="flex-1" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowRemoteInfo(!showRemoteInfo)}
-              className={`h-6 gap-1 px-2 ${showRemoteInfo ? 'text-cyan-400' : 'text-zinc-500 hover:text-cyan-400'}`}
-            >
-              <Wifi className="w-3 h-3" />
-              <span className="text-[9px]">Thiết bị khác</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Chiếu từ thiết bị khác qua mạng LAN
-          </TooltipContent>
-        </Tooltip>
+      {/* Save / Load */}
+      <div className="flex gap-1">
+        <Button size="sm" variant="ghost" onClick={saveProject} className="text-zinc-400 hover:text-white text-[9px] h-6 flex-1">
+          <Save className="w-3 h-3 mr-1" /> Lưu
+        </Button>
+        <Button size="sm" variant="ghost" onClick={loadProject} className="text-zinc-400 hover:text-white text-[9px] h-6 flex-1">
+          <FolderOpen className="w-3 h-3 mr-1" /> Mở
+        </Button>
       </div>
 
-      {/* Remote connection info panel */}
-      {showRemoteInfo && (
-        <div className="bg-zinc-800/80 rounded-md p-2 space-y-2 border border-zinc-700">
-          <div className="flex items-center gap-1.5">
-            <Wifi className="w-3 h-3 text-cyan-400" />
-            <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Chiếu từ thiết bị khác</span>
+      {/* Remote info */}
+      {showRemoteInfo && isLive && (
+        <div className="p-1.5 bg-cyan-900/20 border border-cyan-700/30 rounded-md space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] text-cyan-300 font-medium">URL chiếu online:</span>
+            <button onClick={() => setShowRemoteInfo(false)} className="text-zinc-500 hover:text-zinc-300">
+              <X className="w-2.5 h-2.5" />
+            </button>
           </div>
-
-          <p className="text-[9px] text-zinc-400 leading-relaxed">
-            Mở URL bên dưới trên thiết bị khác (cùng mạng WiFi/LAN) để hiển thị màn hình chiếu:
-          </p>
-
-          {outputUrl && (
-            <div className="flex items-center gap-1 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-600">
-              <code className="text-[10px] text-emerald-400 font-mono flex-1 truncate">{outputUrl}</code>
-              <button
-                onClick={copyUrl}
-                className="text-zinc-400 hover:text-white transition-colors flex-shrink-0"
-              >
-                {copied ? (
-                  <span className="text-[8px] text-emerald-400">Đã copy!</span>
-                ) : (
-                  <Copy className="w-3 h-3" />
-                )}
-              </button>
-            </div>
-          )}
-
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={openOutputInNewTab}
-              className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
-            >
-              <ExternalLink className="w-2.5 h-2.5" />
-              Mở tab mới
+          <div className="flex items-center gap-1">
+            <Input readOnly value={outputUrl} className="h-5 bg-zinc-900 border-zinc-600 text-cyan-300 text-[8px] px-1 flex-1" />
+            <Button size="sm" onClick={copyUrl} className="h-5 text-[8px] px-1.5 bg-cyan-700 hover:bg-cyan-600">
+              {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={copyUrl}
-              className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
-            >
-              <Copy className="w-2.5 h-2.5" />
-              Copy URL
-            </Button>
-          </div>
-
-          <div className="text-[8px] text-zinc-600 leading-relaxed pt-1 border-t border-zinc-700">
-            <p>• Cả 2 thiết bị phải cùng mạng WiFi/LAN</p>
-            <p>• Nhấn &quot;Chiếu&quot; hoặc &quot;Online&quot; trước khi mở URL trên thiết bị khác</p>
-            <p>• Nhấn fullscreen trên thiết bị chiếu</p>
           </div>
         </div>
       )}

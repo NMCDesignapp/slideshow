@@ -83,3 +83,18 @@ Stage Summary:
 - PPTX slide navigator shows in left panel when viewing PPTX
 - Volume control for video scenes
 - Clean preview area with just the content
+
+---
+Task ID: info
+Agent: main
+Task: Save new Vercel deployment URL
+
+Work Log:
+- User deployed to a NEW Vercel project
+- Old URL: https://my-project-delta-one-86.vercel.app (no longer used)
+- New URL saved
+
+Stage Summary:
+- New Vercel URL: https://slideshow-gvku2s8k5-charlienc1604-5790s-projects.vercel.app
+- GitHub repo: NMCDesignapp/slideshow
+- This is the active deployment URL going forward

@@ -45,19 +45,27 @@ export function PreviewPanel() {
 
     goLive()
 
-    // Try to open output window
-    const secondMonitorX = (window.screenLeft || window.screenX) + window.screen.width
-    const newWindow = window.open(
-      window.location.origin + '/output',
-      'showflow-output',
-      `width=1920,height=1080,left=${secondMonitorX},top=0`
-    )
-
-    if (newWindow) {
-      setOutputWindowRef(newWindow)
-      toast.success('Đã mở cửa sổ Output! Kéo sang màn hình 2 → F11 toàn màn hình.', { duration: 5000 })
-    } else {
-      toast('Popup bị chặn — Bấm "Chiếu" để xem hướng dẫn mở trang Output thủ công', { duration: 5000 })
+    // Try to open output window without position params (more reliable)
+    try {
+      const newWindow = window.open('/output', 'showflow_output')
+      if (newWindow) {
+        setOutputWindowRef(newWindow)
+        // Try fullscreen after load
+        setTimeout(() => {
+          try {
+            if (!newWindow.closed) {
+              const bc = new BroadcastChannel('showflow-sync')
+              bc.postMessage({ type: 'REQUEST_FULLSCREEN' })
+              bc.close()
+            }
+          } catch {}
+        }, 1500)
+        toast.success('Đã mở cửa sổ Output! Kéo sang màn hình 2 → Click vào màn hình → F11.', { duration: 5000 })
+      } else {
+        toast('Popup bị chặn — Mở trang /output thủ công trên màn hình 2', { duration: 5000 })
+      }
+    } catch {
+      toast('Không thể mở tự động — Mở trang /output thủ công', { duration: 5000 })
     }
   }
 
@@ -75,14 +83,14 @@ export function PreviewPanel() {
           </span>
         </div>
         <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-emerald-800/50 relative">
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center p-1">
             <div 
-              className="relative overflow-hidden"
+              className="relative overflow-hidden bg-black rounded"
               style={{ 
-                width: '100%', 
-                height: '100%',
                 aspectRatio: `${screenSize.width} / ${screenSize.height}`,
-                objectFit: 'contain'
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: '100%',
               }}
             >
               {nextScene ? (
@@ -185,14 +193,14 @@ export function PreviewPanel() {
           )}
         </div>
         <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-zinc-700 relative">
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center p-1">
             <div 
-              className="relative overflow-hidden"
+              className="relative overflow-hidden bg-black rounded"
               style={{ 
-                width: '100%', 
-                height: '100%',
                 aspectRatio: `${screenSize.width} / ${screenSize.height}`,
-                objectFit: 'contain'
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: '100%',
               }}
             >
               {blackScreen ? (

@@ -204,7 +204,7 @@ function SortableGridItem({
       </div>
 
       {/* Compact layout: thumbnail left, info right - single row */}
-      <div className="flex items-center gap-1 px-1 py-px bg-zinc-900/90">
+      <div className="flex items-center gap-0.5 px-0.5 py-0 bg-zinc-900/90">
         {/* Order number */}
         <span className={`text-[7px] font-bold min-w-[10px] text-center rounded px-0.5 flex-shrink-0 ${
           isCurrent ? 'text-red-400 bg-red-900/30' : isNext ? 'text-emerald-400 bg-emerald-900/30' : 'text-zinc-500'
@@ -213,7 +213,7 @@ function SortableGridItem({
         </span>
 
         {/* Mini thumbnail */}
-        <div className="w-6 h-4 rounded-sm bg-zinc-800 relative overflow-hidden flex-shrink-0">
+        <div className="w-5 h-3 rounded-sm bg-zinc-800 relative overflow-hidden flex-shrink-0">
           {thumbnailSrc ? (
             <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
           ) : scene.type === 'text' ? (
@@ -1013,7 +1013,7 @@ export function SceneList() {
 
       {/* Detail panel - fixed section at bottom, always visible when selected */}
       {selectedScene && (
-        <div className="mt-1.5 border-t border-zinc-800 pt-1.5 overflow-y-auto max-h-[60%] animate-in slide-in-from-bottom-2 duration-200">
+        <div className="mt-1 border-t border-zinc-800 pt-1 overflow-y-auto max-h-[200px]" style={{ transition: 'max-height 0.2s ease' }}>
           {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
             <PptxDetailPanel
               scenes={scenes}
@@ -1441,23 +1441,32 @@ export function ControlPanel() {
     }
     goLive()
 
-    // Try to open output window automatically
-    const secondMonitorX = (window.screenLeft || window.screenX) + window.screen.width
-    const w = window.open(
-      '/output',
-      'showflow_output',
-      `width=1920,height=1080,left=${secondMonitorX},top=0,menubar=no,toolbar=no,location=no,status=no`
-    )
-
-    if (w) {
-      // Popup opened successfully
-      setOutputWindowRef(w)
-      toast.success('Đã mở cửa sổ trình chiếu! Kéo sang màn hình 2 → Nhấn F11.', { duration: 5000 })
-    } else {
-      // Popup blocked - show guide panel
-      setShowProjectionGuide(true)
-      toast('Trình duyệt chặn popup — Mở trang /output thủ công trên màn hình 2', { duration: 5000 })
+    // Try to open output window - no position params (more reliable)
+    try {
+      const w = window.open('/output', 'showflow_output')
+      if (w) {
+        setOutputWindowRef(w)
+        // Try to request fullscreen on the output window after it loads
+        setTimeout(() => {
+          try {
+            if (!w.closed) {
+              // Send fullscreen request via BroadcastChannel
+              const bc = new BroadcastChannel('showflow-sync')
+              bc.postMessage({ type: 'REQUEST_FULLSCREEN' })
+              bc.close()
+            }
+          } catch {}
+        }, 1500)
+        toast.success('Đã mở cửa sổ trình chiếu!', { duration: 3000 })
+      } else {
+        toast('Popup bị chặn — Nhấn nút "Mở trang chiếu" bên dưới', { duration: 5000 })
+      }
+    } catch {
+      toast('Không thể mở tự động — Nhấn nút "Mở trang chiếu" bên dưới', { duration: 5000 })
     }
+    
+    // Always show the guide
+    setShowProjectionGuide(true)
   }
 
   const handleStartOnlineProjection = async () => {
@@ -1682,56 +1691,58 @@ export function ControlPanel() {
         </div>
       )}
 
-      {/* Projection Guide - shows when popup is blocked or user needs help */}
-      {(showProjectionGuide || (isLive && !usePresentationStore.getState().outputWindowRef)) && (
+      {/* Projection Guide - always show when live */}
+      {isLive && (
         <div className="p-2 bg-emerald-900/20 border border-emerald-700/30 rounded-md space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[8px] text-emerald-300 font-bold uppercase">Hướng dẫn chiếu</span>
-            <button onClick={() => setShowProjectionGuide(false)} className="text-zinc-500 hover:text-zinc-300">
-              <X className="w-2.5 h-2.5" />
+            <span className="text-[8px] text-emerald-300 font-bold uppercase">Trang chiếu</span>
+            <button onClick={() => setShowProjectionGuide(!showProjectionGuide)} className="text-zinc-500 hover:text-zinc-300">
+              <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showProjectionGuide ? 'rotate-180' : ''}`} />
             </button>
           </div>
           
-          <div className="space-y-1">
-            <p className="text-[7px] text-zinc-400 leading-relaxed">
-              <span className="text-emerald-400 font-bold">Bước 1:</span> Mở trang output trên màn hình 2:
-            </p>
-            <div className="flex items-center gap-1">
-              <a
-                href="/output"
-                target="_blank"
-                rel="noopener"
-                className="flex-1 h-6 bg-emerald-700 hover:bg-emerald-600 text-white text-[9px] rounded flex items-center justify-center gap-1 font-medium transition-colors"
-              >
-                <MonitorUp className="w-3 h-3" /> Mở trang Output
-              </a>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.origin + '/output').catch(() => {})
-                  toast.success('Đã copy URL!')
-                }}
-                className="h-6 text-[8px] px-1.5 border border-zinc-700"
-              >
-                <Copy className="w-2.5 h-2.5" />
-              </Button>
-            </div>
-            
-            <p className="text-[7px] text-zinc-400 leading-relaxed">
-              <span className="text-emerald-400 font-bold">Bước 2:</span> Kéo cửa sổ Output sang màn hình 2 (máy chiếu)
-            </p>
-            <p className="text-[7px] text-zinc-400 leading-relaxed">
-              <span className="text-emerald-400 font-bold">Bước 3:</span> Nhấn <kbd className="px-0.5 py-px bg-zinc-700 rounded text-[7px]">F11</kbd> để toàn màn hình
-            </p>
-          </div>
+          {/* Always visible: Open output button */}
+          <a
+            href="/output"
+            target="_blank"
+            rel="noopener"
+            className="flex items-center justify-center gap-1.5 h-8 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] rounded-md font-medium transition-colors w-full"
+          >
+            <MonitorUp className="w-4 h-4" /> Mở trang chiếu
+          </a>
           
-          <div className="flex items-center gap-1 pt-0.5 border-t border-zinc-800">
-            <div className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
-            <span className="text-[7px] text-zinc-500">
-              {isLive ? 'Đang chiếu — nội dung sẽ tự đồng bộ' : 'Chưa bật chiếu'}
-            </span>
-          </div>
+          {showProjectionGuide && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <div className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
+                <span className="text-[7px] text-zinc-400">
+                  {isLive ? 'Đang chiếu — nội dung tự đồng bộ qua BroadcastChannel' : 'Chưa bật chiếu'}
+                </span>
+              </div>
+              <p className="text-[7px] text-zinc-400 leading-relaxed">
+                <span className="text-emerald-400 font-bold">1.</span> Nhấn nút xanh phía trên để mở trang chiếu (không bị chặn popup)
+              </p>
+              <p className="text-[7px] text-zinc-400 leading-relaxed">
+                <span className="text-emerald-400 font-bold">2.</span> Kéo cửa sổ chiếu sang màn hình 2 (máy chiếu)
+              </p>
+              <p className="text-[7px] text-zinc-400 leading-relaxed">
+                <span className="text-emerald-400 font-bold">3.</span> Click vào màn hình chiếu hoặc nhấn <kbd className="px-0.5 py-px bg-zinc-700 rounded text-[7px]">F11</kbd> để toàn màn hình
+              </p>
+              <div className="flex items-center gap-1 pt-0.5">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin + '/output').catch(() => {})
+                    toast.success('Đã copy URL!')
+                  }}
+                  className="h-5 text-[8px] px-1.5 border border-zinc-700 text-zinc-400"
+                >
+                  <Copy className="w-2.5 h-2.5 mr-0.5" /> Copy URL
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

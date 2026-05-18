@@ -47,7 +47,6 @@ function stopOutputAudioKeepAlive() {
 
 /**
  * Optimized overlay renderer
- * Supports scrolling text overlay type
  */
 const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: TextOverlay[] }) {
   const visibleOverlays = overlays.filter((o) => o.visible)
@@ -102,12 +101,6 @@ export default function OutputPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Compute connection mode from window.opener - no setState needed in effects
-  const connectionMode = useMemo(() => {
-    if (typeof window === 'undefined') return 'unknown'
-    return window.opener ? 'local' : 'remote'
-  }, [])
-
   const handleFullscreen = useCallback(() => {
     if (containerRef.current && !document.fullscreenElement) {
       containerRef.current.requestFullscreen?.()
@@ -130,7 +123,7 @@ export default function OutputPage() {
     startOutputAudioKeepAlive()
 
     const forceAllVideosPlay = () => {
-      if (videoPaused) return // Don't force play if user paused
+      if (videoPaused) return
       const videos = document.querySelectorAll('video')
       videos.forEach((v) => {
         if (v.paused && !v.ended) {
@@ -161,7 +154,7 @@ export default function OutputPage() {
     }
 
     const handleVideoPauseGlobal = (e: Event) => {
-      if (videoPaused) return // Don't auto-resume if user paused
+      if (videoPaused) return
       const video = e.target as HTMLVideoElement
       if (video && !video.ended) {
         requestAnimationFrame(() => {
@@ -206,7 +199,7 @@ export default function OutputPage() {
     }
   }, [videoPaused])
 
-  // === STATE UPDATE HANDLER (shared by both local and remote) ===
+  // === STATE UPDATE HANDLER (shared by all modes) ===
   const handleStateUpdate = useCallback((payload: OutputState) => {
     const newId = payload.scene?.id
 
@@ -229,14 +222,48 @@ export default function OutputPage() {
     setState(payload)
   }, [state.scene])
 
-  // === MODE 1: LOCAL (postMessage from opener window) ===
+  // === MODE 1: BroadcastChannel (MOST RELIABLE - works for popup, manual tab, same device) ===
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel('showflow-sync')
+
+      bc.onmessage = (event) => {
+        const data = event.data
+        if (data?.type === 'PRESENTATION_UPDATE') {
+          setConnected(true)
+          handleStateUpdate(data.payload as OutputState)
+        }
+        if (data?.type === 'VIDEO_PAUSE') {
+          setVideoPaused(true)
+          document.querySelectorAll('video').forEach((v) => v.pause())
+        }
+        if (data?.type === 'VIDEO_PLAY') {
+          setVideoPaused(false)
+          document.querySelectorAll('video').forEach((v) => {
+            v.play().catch(() => {})
+          })
+        }
+        if (data?.type === 'REQUEST_FULLSCREEN') {
+          handleFullscreen()
+        }
+      }
+    } catch {
+      // BroadcastChannel not supported
+    }
+
+    return () => {
+      bc?.close()
+    }
+  }, [handleStateUpdate, handleFullscreen])
+
+  // === MODE 2: postMessage from opener window (legacy fallback) ===
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === 'PRESENTATION_UPDATE') {
         setConnected(true)
         handleStateUpdate(event.data.payload as OutputState)
       }
-      // Handle video pause/play messages
       if (event.data?.type === 'VIDEO_PAUSE') {
         setVideoPaused(true)
         document.querySelectorAll('video').forEach((v) => v.pause())
@@ -261,10 +288,18 @@ export default function OutputPage() {
     }
   }, [handleStateUpdate])
 
-  // === MODE 2: REMOTE (SSE from server - for cross-device) ===
+  // === MODE 3: SSE (for cross-device / remote) ===
   useEffect(() => {
-    // Only try SSE if not opened as a popup (no window.opener)
+    // Only try SSE if no BroadcastChannel and not opened as popup
     if (window.opener) return
+    // Skip SSE if BroadcastChannel is available (it's more reliable)
+    try {
+      const testBC = new BroadcastChannel('showflow-sync-test')
+      testBC.close()
+      return // BroadcastChannel available, no need for SSE
+    } catch {
+      // BroadcastChannel not available, use SSE
+    }
 
     let eventSource: EventSource | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -280,7 +315,6 @@ export default function OutputPage() {
         eventSource.onmessage = (event) => {
           try {
             const payload = JSON.parse(event.data) as OutputState
-            // Check if it's a video control message
             if (payload.type === 'VIDEO_PAUSE') {
               setVideoPaused(true)
               document.querySelectorAll('video').forEach((v) => v.pause())
@@ -300,11 +334,9 @@ export default function OutputPage() {
         eventSource.onerror = () => {
           setConnected(false)
           eventSource?.close()
-          // Auto-reconnect after 3 seconds
           reconnectTimer = setTimeout(connect, 3000)
         }
       } catch {
-        // SSE not supported, fallback to polling
         reconnectTimer = setTimeout(connect, 5000)
       }
     }
@@ -317,7 +349,7 @@ export default function OutputPage() {
     }
   }, [handleStateUpdate])
 
-  // Per-slide transition: use the transition from payload (already resolved)
+  // Per-slide transition
   const transitionType = state.transitionType || 'none'
   const transitionDuration = state.transitionDuration || DEFAULT_TRANSITION_DURATION
   const duration = `${transitionDuration}ms`
@@ -336,7 +368,7 @@ export default function OutputPage() {
         <div className="absolute inset-0 bg-black flex items-center justify-center text-white/20">
           <div className="text-center">
             <p className="text-xl mb-2">Đang chờ nội dung trình chiếu...</p>
-            {connectionMode === 'remote' && !connected && (
+            {!connected && (
               <p className="text-sm text-yellow-400/60">Đang kết nối tới máy điều khiển...</p>
             )}
           </div>
@@ -390,19 +422,10 @@ export default function OutputPage() {
       onClick={handleFullscreen}
       onDoubleClick={() => document.exitFullscreen?.()}
     >
-      {/* Aspect ratio container - centers content within the full screen */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="relative w-full h-full"
-          style={{
-            aspectRatio: `${selectedRatio.widthRatio} / ${selectedRatio.heightRatio}`,
-            maxWidth: aspectRatio === '4:3' ? `${(selectedRatio.widthRatio / selectedRatio.heightRatio) * 100}vh` : undefined,
-            maxHeight: aspectRatio === '4:3' ? '100%' : undefined,
-          }}
-        >
-          {renderScene()}
-          {state.overlays && <OverlayRenderer overlays={state.overlays} />}
-        </div>
+      {/* Full screen content - fills entire screen */}
+      <div className="absolute inset-0">
+        {renderScene()}
+        {state.overlays && <OverlayRenderer overlays={state.overlays} />}
       </div>
 
       {/* Aspect ratio buttons - top-left, appear on hover */}
@@ -426,14 +449,12 @@ export default function OutputPage() {
       </div>
 
       {/* Connection status indicator - subtle, top right */}
-      {connectionMode === 'remote' && (
-        <div className="absolute top-2 right-2 z-50 flex items-center gap-1.5 opacity-30 hover:opacity-80 transition-opacity">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
-          <span className="text-[9px] text-white/70">
-            {connected ? 'Đã kết nối' : 'Mất kết nối'}
-          </span>
-        </div>
-      )}
+      <div className="absolute top-2 right-2 z-50 flex items-center gap-1.5 opacity-30 hover:opacity-80 transition-opacity">
+        <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+        <span className="text-[9px] text-white/70">
+          {connected ? 'Đã kết nối' : 'Đang chờ...'}
+        </span>
+      </div>
     </div>
   )
 }

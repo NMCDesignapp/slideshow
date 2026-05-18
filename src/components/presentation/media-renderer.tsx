@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react'
 import { usePresentationStore, Scene, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
+import { broadcastUpdate, broadcastVideoControl } from '@/lib/broadcast-sync'
 
 // === WEB AUDIO API KEEP-ALIVE ===
 let audioContext: AudioContext | null = null
@@ -63,7 +64,9 @@ let videoPausedByUser = false
 
 export function setVideoPaused(paused: boolean) {
   videoPausedByUser = paused
-  // Also send postMessage to output window
+  // Send via BroadcastChannel (reliable, works even if popup blocked)
+  broadcastVideoControl(paused ? 'VIDEO_PAUSE' : 'VIDEO_PLAY')
+  // Also send via postMessage as fallback
   try {
     const outputWindow = usePresentationStore.getState().outputWindowRef
     if (outputWindow && !outputWindow.closed) {
@@ -511,7 +514,10 @@ export function OutputSync() {
     const output = getOutputContent()
     if (!output) return
 
-    // MODE 1: Local sync (postMessage to popup window)
+    // MODE 1: BroadcastChannel (most reliable for same-device dual-screen)
+    broadcastUpdate(output)
+
+    // MODE 2: postMessage to popup window (legacy fallback)
     try {
       const outputWindow = usePresentationStore.getState().outputWindowRef
       if (outputWindow && !outputWindow.closed) {
@@ -522,7 +528,7 @@ export function OutputSync() {
       }
     } catch { /* Window may be closed */ }
 
-    // MODE 2: Remote sync (POST to API for cross-device SSE)
+    // MODE 3: Remote sync (POST to API for cross-device SSE)
     fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

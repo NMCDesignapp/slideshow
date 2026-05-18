@@ -1432,20 +1432,47 @@ export function ControlPanel() {
   }
 
   // === PROJECTION BUTTONS ===
+  const [showProjectionGuide, setShowProjectionGuide] = useState(false)
+
   const handleStartProjection = async () => {
-    // Check if there are scenes
     if (scenes.length === 0) {
       toast.error('Chưa có nội dung để chiếu! Thêm ảnh/video/slide trước.')
       return
     }
     goLive()
-    openOutputWindow()
+
+    // Try to open output window automatically
+    const secondMonitorX = (window.screenLeft || window.screenX) + window.screen.width
+    const w = window.open(
+      '/output',
+      'showflow_output',
+      `width=1920,height=1080,left=${secondMonitorX},top=0,menubar=no,toolbar=no,location=no,status=no`
+    )
+
+    if (w) {
+      // Popup opened successfully
+      setOutputWindowRef(w)
+      toast.success('Đã mở cửa sổ trình chiếu! Kéo sang màn hình 2 → Nhấn F11.', { duration: 5000 })
+    } else {
+      // Popup blocked - show guide panel
+      setShowProjectionGuide(true)
+      toast('Trình duyệt chặn popup — Mở trang /output thủ công trên màn hình 2', { duration: 5000 })
+    }
   }
 
   const handleStartOnlineProjection = async () => {
+    if (scenes.length === 0) {
+      toast.error('Chưa có nội dung để chiếu!')
+      return
+    }
     goLive()
-    openOutputWindow()
     setShowRemoteInfo(true)
+
+    // Also try to open local output
+    const w = window.open('/output', 'showflow_output', 'width=1920,height=1080')
+    if (w) {
+      setOutputWindowRef(w)
+    }
     toast.success('Đã bật chiếu online')
   }
 
@@ -1456,92 +1483,8 @@ export function ControlPanel() {
       outputWin.close()
     }
     setOutputWindowRef(null)
+    setShowProjectionGuide(false)
     toast.success('Đã tắt toàn bộ chiếu')
-  }
-
-  const openOutputWindow = () => {
-    // Try Presentation API first (for smart TVs/Chromecast)
-    if ('presentation' in navigator) {
-      try {
-        const presentationRequest = new (navigator as any).PresentationRequest([
-          window.location.href + '#output',
-        ])
-        presentationRequest.start().then(() => {
-          toast.success('Đã kết nối màn hình trình chiếu')
-        }).catch(() => fallbackOpenWindow())
-        return
-      } catch {
-        // Fall through to popup method
-      }
-    }
-    fallbackOpenWindow()
-  }
-
-  const fallbackOpenWindow = () => {
-    // Detect second monitor position
-    const screenLeft = window.screenLeft || window.screenX
-    const screenWidth = window.screen.width
-
-    // Try to position window on second monitor (right side)
-    const secondMonitorX = screenLeft + screenWidth
-
-    const w = window.open(
-      '/output',
-      'showflow_output',
-      `width=1920,height=1080,left=${secondMonitorX},top=0,menubar=no,toolbar=no,location=no,status=no`
-    )
-
-    if (!w) {
-      // Popup was blocked!
-      toast.error('Trình duyệt đã chặn popup! Vui lòng cho phép popup cho trang web này.', {
-        duration: 6000,
-        description: 'Nhấn vào biểu tượng popup bị chặn trong thanh địa chỉ → Cho phép'
-      })
-      stopLive()
-      return
-    }
-
-    setOutputWindowRef(w)
-
-    // Wait for window to load, then send initial state and try fullscreen
-    const checkLoaded = setInterval(() => {
-      try {
-        if (w.document && w.document.readyState === 'complete') {
-          clearInterval(checkLoaded)
-
-          // Send initial state
-          const state = usePresentationStore.getState() as any
-          const cs = state.scenes[state.currentSceneIndex]
-          w.postMessage(
-            {
-              type: 'PRESENTATION_UPDATE',
-              payload: state.blackScreen
-                ? { type: 'black' }
-                : cs
-                  ? {
-                      type: 'scene',
-                      scene: cs,
-                      overlays: state.textOverlays,
-                      transitionType: cs.sceneTransitionType || state.transitionType,
-                      transitionDuration: cs.sceneTransitionDuration || state.transitionDuration,
-                      videoVolume: state.videoVolume,
-                      videoMuted: state.videoMuted,
-                    }
-                  : { type: 'empty' },
-            },
-            window.location.origin
-          )
-
-          // Show guidance toast
-          toast.success('Đã mở cửa sổ trình chiếu!', {
-            duration: 5000,
-            description: 'Kéo cửa sổ sang màn hình 2 → Nhấn F11 để toàn màn hình'
-          })
-        }
-      } catch {
-        clearInterval(checkLoaded)
-      }
-    }, 100)
   }
 
   // === VIDEO TRIM HANDLERS ===
@@ -1735,6 +1678,59 @@ export function ControlPanel() {
             <Button size="sm" onClick={copyUrl} className="h-5 text-[8px] px-1.5 bg-cyan-700 hover:bg-cyan-600">
               {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Projection Guide - shows when popup is blocked or user needs help */}
+      {(showProjectionGuide || (isLive && !usePresentationStore.getState().outputWindowRef)) && (
+        <div className="p-2 bg-emerald-900/20 border border-emerald-700/30 rounded-md space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] text-emerald-300 font-bold uppercase">Hướng dẫn chiếu</span>
+            <button onClick={() => setShowProjectionGuide(false)} className="text-zinc-500 hover:text-zinc-300">
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </div>
+          
+          <div className="space-y-1">
+            <p className="text-[7px] text-zinc-400 leading-relaxed">
+              <span className="text-emerald-400 font-bold">Bước 1:</span> Mở trang output trên màn hình 2:
+            </p>
+            <div className="flex items-center gap-1">
+              <a
+                href="/output"
+                target="_blank"
+                rel="noopener"
+                className="flex-1 h-6 bg-emerald-700 hover:bg-emerald-600 text-white text-[9px] rounded flex items-center justify-center gap-1 font-medium transition-colors"
+              >
+                <MonitorUp className="w-3 h-3" /> Mở trang Output
+              </a>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin + '/output').catch(() => {})
+                  toast.success('Đã copy URL!')
+                }}
+                className="h-6 text-[8px] px-1.5 border border-zinc-700"
+              >
+                <Copy className="w-2.5 h-2.5" />
+              </Button>
+            </div>
+            
+            <p className="text-[7px] text-zinc-400 leading-relaxed">
+              <span className="text-emerald-400 font-bold">Bước 2:</span> Kéo cửa sổ Output sang màn hình 2 (máy chiếu)
+            </p>
+            <p className="text-[7px] text-zinc-400 leading-relaxed">
+              <span className="text-emerald-400 font-bold">Bước 3:</span> Nhấn <kbd className="px-0.5 py-px bg-zinc-700 rounded text-[7px]">F11</kbd> để toàn màn hình
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-1 pt-0.5 border-t border-zinc-800">
+            <div className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
+            <span className="text-[7px] text-zinc-500">
+              {isLive ? 'Đang chiếu — nội dung sẽ tự đồng bộ' : 'Chưa bật chiếu'}
+            </span>
           </div>
         </div>
       )}

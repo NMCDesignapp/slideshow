@@ -79,3 +79,26 @@
 
 ### Additional
 - Installed `cloudconvert` npm package
+
+---
+Task ID: projection-fix-v2
+Agent: Main Agent
+Task: Fix projection not working - replace postMessage with BroadcastChannel
+
+Work Log:
+- Analyzed the root cause: window.open() popup gets blocked by browsers, and postMessage requires a valid window reference
+- Created new BroadcastChannel sync module at /src/lib/broadcast-sync.ts
+- Updated OutputSync in media-renderer.tsx to use BroadcastChannel as primary sync method (MODE 1)
+- Updated output page (/output/page.tsx) to listen on BroadcastChannel as primary connection mode
+- Simplified projection button: removed complex Presentation API / fallback logic, just try window.open() directly
+- Added "Projection Guide" panel in ControlPanel that shows when popup is blocked
+- Guide panel includes clickable link to /output (opens in new tab), copy URL button, and step-by-step instructions
+- Guide panel auto-shows when isLive=true but no outputWindowRef (meaning output window not open)
+- Updated PreviewPanel Go Live button with same simplified approach
+- Fixed 16:9 display in preview panels using absolute positioning with object-fit:contain
+
+Stage Summary:
+- BroadcastChannel is the key fix - it works across tabs/windows with same origin, doesn't need window reference
+- Even if popup is blocked, user can manually open /output and it will sync automatically
+- Guide panel provides clear 3-step instructions in Vietnamese
+- Output page now shows connection status indicator always (not just in remote mode)

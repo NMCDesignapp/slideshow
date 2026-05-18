@@ -70,6 +70,9 @@ async function convertWithCloudConvert(fileBuffer: Buffer, fileName: string, api
     
     for (let i = 0; i < exportTask.result.files.length; i++) {
       const file = exportTask.result.files[i]
+      if (!file.url) {
+        throw new Error(`CloudConvert export URL missing for slide ${i + 1}`)
+      }
       const response = await fetch(file.url)
       const arrayBuffer = await response.arrayBuffer()
       const base64 = Buffer.from(arrayBuffer).toString('base64')

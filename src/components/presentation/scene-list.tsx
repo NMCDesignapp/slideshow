@@ -20,7 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Trash2,
-  Image,
+  Image as ImageIcon,
   Video,
   Globe,
   Type,
@@ -128,7 +128,7 @@ let pptxCounter = 0
 function SceneIcon({ type, size = 14 }: { type: Scene['type']; size?: number }) {
   const cls = `text-${size === 14 ? 4 : 3}`
   switch (type) {
-    case 'image': return <Image className={`${cls} text-blue-400`} style={{ width: size, height: size }} />
+    case 'image': return <ImageIcon className={`${cls} text-blue-400`} style={{ width: size, height: size }} />
     case 'video': return <Video className={`${cls} text-purple-400`} style={{ width: size, height: size }} />
     case 'web': return <Globe className={`${cls} text-cyan-400`} style={{ width: size, height: size }} />
     case 'text': return <Type className={`${cls} text-yellow-400`} style={{ width: size, height: size }} />
@@ -346,7 +346,7 @@ function ImageDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdat
     <div className="p-2 bg-blue-900/10 border border-blue-700/20 rounded-lg space-y-1.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Image className="w-3.5 h-3.5 text-blue-400" />
+          <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
           <span className="text-[10px] font-medium text-blue-200 truncate max-w-[120px]">{scene.name}</span>
         </div>
         <Button size="sm" variant="ghost" onClick={onDelete} className="text-red-400 hover:text-red-300 h-5 w-5 p-0">
@@ -943,7 +943,7 @@ export function SceneList() {
       <ScrollArea className="flex-1 min-h-0">
         {scenes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
-            <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
+            <ImageIcon className="w-10 h-10 mb-2 opacity-30" aria-hidden />
             <p className="text-xs">Chưa có thành phần nào</p>
             <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
           </div>
@@ -954,32 +954,33 @@ export function SceneList() {
                 {gridItems.map((item) => {
                   if (item.type === 'pptx-group' && item.groupId) {
                     const firstSlide = item.groupFirstSlide
-                    const isSelected = selectedSceneId === item.groupId || 
-                      (firstSlide && pptxGroups.get(item.groupId)?.slides.some(s => s.id === selectedSceneId))
-                    const isNext = scenes.findIndex((s) => s.pptxFileId === item.groupId) === nextSceneIndex ||
-                      (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === nextSceneIndex)
-                    const isCurrent = scenes.findIndex((s) => s.pptxFileId === item.groupId) === currentSceneIndex ||
-                      (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === currentSceneIndex)
+                    const groupId = item.groupId
+                    const isSelected = selectedSceneId === groupId || 
+                      Boolean(firstSlide && pptxGroups.get(groupId)?.slides.some(s => s.id === selectedSceneId))
+                    const isNext = scenes.findIndex((s) => s.pptxFileId === groupId) === nextSceneIndex ||
+                      Boolean(firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === nextSceneIndex)
+                    const isCurrent = scenes.findIndex((s) => s.pptxFileId === groupId) === currentSceneIndex ||
+                      Boolean(firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === currentSceneIndex)
 
                     return (
                       <SortableGridItem
-                        key={item.groupId}
-                        scene={firstSlide || { id: item.groupId, type: 'pptx-slide', name: item.groupFileName || 'PPTX', order: 0 }}
+                        key={groupId}
+                        scene={firstSlide || { id: groupId, type: 'pptx-slide', name: item.groupFileName || 'PPTX', order: 0 }}
                         displayIndex={item.displayIndex}
                         isNext={isNext}
                         isCurrent={isCurrent}
                         onClick={() => {
-                          const idx = scenes.findIndex((s) => s.pptxFileId === item.groupId)
+                          const idx = scenes.findIndex((s) => s.pptxFileId === groupId)
                           if (idx >= 0) {
-                            if (selectedSceneId === item.groupId) {
+                            if (selectedSceneId === groupId) {
                               setSelectedSceneId(null)
                             } else {
                               selectAsNext(idx)
-                              setSelectedSceneId(item.groupId)
+                              setSelectedSceneId(groupId)
                             }
                           }
                         }}
-                        onDelete={() => deletePptxGroup(item.groupId)}
+                        onDelete={() => deletePptxGroup(groupId)}
                       />
                     )
                   }

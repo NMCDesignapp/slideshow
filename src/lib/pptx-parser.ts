@@ -12,7 +12,20 @@ interface PptxSlide {
  * falls back to client-side SVG rendering if server is unavailable.
  */
 export async function parsePptx(file: File): Promise<PptxSlide[]> {
-  // Try server-side conversion first
+  const conversionMode = typeof window !== 'undefined'
+    ? localStorage.getItem('showflow-pptx-mode') || 'offline'
+    : 'offline'
+
+  // Default to offline/client rendering so importing PPTX does not depend on Internet
+  // or a slow server-side converter. Users can opt in to server quality if needed.
+  if (conversionMode !== 'server') {
+    try {
+      return await parsePptxClientSide(file)
+    } catch (clientErr) {
+      console.warn('Client-side PPTX parsing failed, trying server conversion:', clientErr)
+    }
+  }
+
   try {
     const serverResult = await convertPptxServer(file)
     if (serverResult && serverResult.length > 0) {
@@ -22,7 +35,6 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
     console.warn('Server-side PPTX conversion failed, falling back to client-side:', err)
   }
 
-  // Fallback to client-side SVG rendering
   return parsePptxClientSide(file)
 }
 

@@ -4,6 +4,33 @@ import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from '
 import { usePresentationStore, Scene, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 import { broadcastUpdate, broadcastVideoControl } from '@/lib/broadcast-sync'
 
+
+const IMAGE_FILTERS: Record<string, string> = {
+  none: 'none',
+  cinematic: 'contrast(1.08) saturate(0.92) brightness(0.92)',
+  vivid: 'contrast(1.12) saturate(1.28)',
+  mono: 'grayscale(1) contrast(1.08)',
+  warm: 'sepia(0.22) saturate(1.18) brightness(1.04)',
+  cool: 'saturate(1.08) hue-rotate(185deg) brightness(1.02)',
+  neon: 'contrast(1.18) saturate(1.42) drop-shadow(0 0 16px rgba(57,255,20,0.38))',
+}
+
+function getImageStyle(scene: Scene): React.CSSProperties {
+  const scale = scene.imageScale ?? 100
+  const rotate = scene.imageRotate ?? 0
+  const x = scene.imageX ?? 0
+  const y = scene.imageY ?? 0
+  return {
+    willChange: 'transform, filter',
+    imageRendering: 'auto',
+    objectFit: scene.imageFit || 'contain',
+    width: '100%',
+    height: '100%',
+    transform: `translate3d(${x}%, ${y}%, 0) scale(${scale / 100}) rotate(${rotate}deg)`,
+    filter: IMAGE_FILTERS[scene.imageFilter || 'none'] || 'none',
+  }
+}
+
 // === WEB AUDIO API KEEP-ALIVE ===
 let audioContext: AudioContext | null = null
 let silenceOscillator: OscillatorNode | null = null
@@ -243,17 +270,15 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
       )
     }
 
-    // Preview: render interactive iframe for web type
+    // Preview: do not load remote pages in the controller. This keeps the UI fast/offline-friendly.
     if (scene.type === 'web' && isPreview) {
       return (
-        <div className="w-full h-full bg-white overflow-hidden">
-          <iframe
-            src={scene.url}
-            className="w-full h-full border-0"
-            title={scene.name}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            loading="eager"
-          />
+        <div className="w-full h-full bg-slate-950 overflow-hidden flex items-center justify-center p-5 text-center">
+          <div className="max-w-[82%] rounded-xl border border-cyan-400/30 bg-cyan-950/20 p-4 shadow-[0_0_24px_rgba(34,211,238,0.14)]">
+            <div className="text-cyan-200 text-sm font-semibold mb-2">Web scene chỉ tải ở màn hình Output</div>
+            <div className="text-cyan-100/60 text-xs break-all">{scene.url}</div>
+            <div className="mt-3 text-[10px] text-cyan-100/40">Dùng ảnh/video/PPTX/text để chiếu không phụ thuộc Internet.</div>
+          </div>
         </div>
       )
     }
@@ -267,8 +292,8 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
             <img
               src={scene.src}
               alt={scene.name || 'Image'}
-              className="max-w-full max-h-full object-contain"
-              style={{ willChange: 'transform', imageRendering: 'auto' }}
+              className="max-w-full max-h-full"
+              style={getImageStyle(scene)}
               loading="eager"
               decoding="async"
             />
@@ -356,7 +381,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
         )
     }
    
-  }, [scene.id, scene.type, scene.src, scene.url, scene.content, scene.fontSize, scene.fontColor, scene.bgColor, scene.textAlign, scene.name, shouldAutoPlay, videoMuted, isPreview, scene.thumbnail])
+  }, [scene, shouldAutoPlay, videoMuted, isPreview])
 
   return (
     <div className={`relative w-full h-full ${className}`}>
@@ -486,7 +511,7 @@ export const TransitionRenderer = memo(function TransitionRenderer({
  * Now includes per-slide transition overrides
  */
 export function OutputSync() {
-  const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration, videoVolume, videoMuted } = usePresentationStore()
+  const { scenes, currentSceneIndex, isLive, textOverlays, blackScreen, transitionType, transitionDuration, videoVolume, videoMuted, annotationTool, annotationColor, annotationSize, pointerPosition, annotationPaths } = usePresentationStore()
   const currentScene = scenes[currentSceneIndex]
 
   const getOutputContent = useCallback(() => {
@@ -502,8 +527,13 @@ export function OutputSync() {
       transitionDuration: currentScene.sceneTransitionDuration || transitionDuration,
       videoVolume,
       videoMuted,
+      annotationTool,
+      annotationColor,
+      annotationSize,
+      pointerPosition,
+      annotationPaths,
     }
-  }, [isLive, blackScreen, currentScene, textOverlays, transitionType, transitionDuration, videoVolume, videoMuted])
+  }, [isLive, blackScreen, currentScene, textOverlays, transitionType, transitionDuration, videoVolume, videoMuted, annotationTool, annotationColor, annotationSize, pointerPosition, annotationPaths])
 
   useEffect(() => {
     const output = getOutputContent()

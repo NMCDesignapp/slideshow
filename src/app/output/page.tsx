@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useEffect, useState, useRef, useCallback, memo, useMemo } from 'react'
-import { Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
+import { AnnotationPath, AnnotationPoint, AnnotationTool, Scene, TextOverlay, TransitionType, DEFAULT_TRANSITION_DURATION } from '@/store/presentation-store'
 import { MediaRenderer } from '@/components/presentation/media-renderer'
+import { AnnotationLayer } from '@/components/presentation/annotation-layer'
 
 interface OutputState {
   type: 'empty' | 'black' | 'scene'
@@ -12,6 +13,11 @@ interface OutputState {
   transitionDuration?: number
   videoVolume?: number
   videoMuted?: boolean
+  annotationTool?: AnnotationTool
+  annotationColor?: string
+  annotationSize?: number
+  pointerPosition?: AnnotationPoint | null
+  annotationPaths?: AnnotationPath[]
 }
 
 // === WEB AUDIO API KEEP-ALIVE ===
@@ -68,6 +74,7 @@ const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: 
         }
 
         const isScrolling = overlay.animation === 'scroll'
+        const isTypewriter = overlay.animation === 'typewriter'
         const scrollDuration = overlay.scrollDuration || 15
 
         return (
@@ -89,6 +96,8 @@ const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: 
                 <span className="overlay-ticker" style={{ '--ticker-duration': `${scrollDuration}s` } as React.CSSProperties}>
                   {overlay.text} &nbsp;&nbsp;&nbsp; {overlay.text} &nbsp;&nbsp;&nbsp; {overlay.text}
                 </span>
+              ) : isTypewriter ? (
+                <span className="overlay-typewriter" style={{ '--typewriter-steps': overlay.text.length } as React.CSSProperties}>{overlay.text}</span>
               ) : (
                 overlay.text
               )}
@@ -381,6 +390,13 @@ export default function OutputPage() {
       <div className="absolute inset-0">
         {renderScene()}
         {state.overlays && <OverlayRenderer overlays={state.overlays} />}
+        <AnnotationLayer
+          tool={state.annotationTool}
+          pointerPosition={state.pointerPosition}
+          paths={state.annotationPaths || []}
+          color={state.annotationColor}
+          size={state.annotationSize}
+        />
       </div>
 
       {/* Aspect ratio buttons - top-left, appear on hover */}

@@ -20,7 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Trash2,
-  Image,
+  Image as ImageIcon,
   Video,
   Globe,
   Type,
@@ -57,6 +57,10 @@ import {
   Volume2,
   VolumeX,
   Copy,
+  MousePointer2,
+  PenTool,
+  Eraser,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -128,7 +132,7 @@ let pptxCounter = 0
 function SceneIcon({ type, size = 14 }: { type: Scene['type']; size?: number }) {
   const cls = `text-${size === 14 ? 4 : 3}`
   switch (type) {
-    case 'image': return <Image className={`${cls} text-blue-400`} style={{ width: size, height: size }} />
+    case 'image': return <ImageIcon className={`${cls} text-blue-400`} style={{ width: size, height: size }} />
     case 'video': return <Video className={`${cls} text-purple-400`} style={{ width: size, height: size }} />
     case 'web': return <Globe className={`${cls} text-cyan-400`} style={{ width: size, height: size }} />
     case 'text': return <Type className={`${cls} text-yellow-400`} style={{ width: size, height: size }} />
@@ -180,76 +184,69 @@ function SortableGridItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative rounded-md overflow-hidden cursor-pointer transition-all group border ${
+      className={`relative rounded-xl overflow-hidden cursor-pointer transition-all group border bg-zinc-950/80 ${
         isCurrent
-          ? 'border-red-500 ring-1 ring-red-500/30'
+          ? 'border-red-400 ring-2 ring-red-500/30 shadow-[0_0_22px_rgba(248,113,113,0.16)]'
           : isNext
-            ? 'border-emerald-500 ring-1 ring-emerald-500/30'
-            : 'border-zinc-700 hover:border-zinc-500'
+            ? 'border-emerald-400 ring-2 ring-emerald-500/25 shadow-[0_0_22px_rgba(52,211,153,0.14)]'
+            : 'border-emerald-900/40 hover:border-emerald-500/70 hover:shadow-[0_0_18px_rgba(34,197,94,0.10)]'
       }`}
       onClick={onClick}
     >
-      {/* Drag handle */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute top-0 left-0 z-20 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 bg-zinc-800/80 rounded-br p-px transition-opacity"
-      >
-        <GripVertical className="w-2.5 h-2.5 text-zinc-400" />
-      </div>
+      <div className="relative aspect-video bg-black overflow-hidden">
+        {thumbnailSrc ? (
+          <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
+        ) : scene.type === 'text' ? (
+          <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}>
+            <Type className="w-7 h-7 text-yellow-400/60" />
+          </div>
+        ) : scene.type === 'web' ? (
+          <div className="w-full h-full flex items-center justify-center bg-cyan-950/40">
+            <Globe className="w-7 h-7 text-cyan-300/60" />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+            <SceneIcon type={scene.type} size={22} />
+          </div>
+        )}
 
-      {/* Compact layout: thumbnail left, info right - single row */}
-      <div className="flex items-center gap-0.5 px-0.5 py-0 bg-zinc-900/90">
-        {/* Order number */}
-        <span className={`text-[7px] font-bold min-w-[10px] text-center rounded px-0.5 flex-shrink-0 ${
-          isCurrent ? 'text-red-400 bg-red-900/30' : isNext ? 'text-emerald-400 bg-emerald-900/30' : 'text-zinc-500'
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute top-1 left-1 z-20 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 bg-black/70 border border-white/10 rounded-md p-1 transition-opacity"
+        >
+          <GripVertical className="w-3.5 h-3.5 text-zinc-300" />
+        </div>
+
+        {isCurrent && (
+          <div className="absolute top-1 right-1 bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded font-bold z-10 leading-tight">
+            LIVE
+          </div>
+        )}
+        {isNext && !isCurrent && (
+          <div className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] px-1.5 py-0.5 rounded font-bold z-10 leading-tight">
+            NEXT
+          </div>
+        )}
+        <span className={`absolute bottom-1 left-1 text-[10px] font-bold min-w-5 text-center rounded px-1.5 py-0.5 ${
+          isCurrent ? 'text-red-100 bg-red-900/80' : isNext ? 'text-emerald-100 bg-emerald-900/80' : 'text-zinc-200 bg-black/70'
         }`}>
           {displayIndex}
         </span>
+      </div>
 
-        {/* Mini thumbnail */}
-        <div className="w-5 h-3 rounded-sm bg-zinc-800 relative overflow-hidden flex-shrink-0">
-          {thumbnailSrc ? (
-            <img src={thumbnailSrc} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
-          ) : scene.type === 'text' ? (
-            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: scene.bgColor || '#1a1a2e' }}>
-              <Type className="w-2.5 h-2.5 text-yellow-400/60" />
-            </div>
-          ) : scene.type === 'web' ? (
-            <div className="w-full h-full flex items-center justify-center bg-cyan-900/20">
-              <Globe className="w-2.5 h-2.5 text-cyan-400/40" />
-            </div>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <SceneIcon type={scene.type} size={8} />
-            </div>
-          )}
-
-          {/* Status badge */}
-          {isCurrent && (
-            <div className="absolute top-0 right-0 bg-red-500 text-white text-[5px] px-0.5 rounded-bl font-bold z-10 leading-tight">
-              LIVE
-            </div>
-          )}
-          {isNext && !isCurrent && (
-            <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[5px] px-0.5 rounded-bl font-bold z-10 leading-tight">
-              NEXT
-            </div>
-          )}
-        </div>
-
-        {/* Name */}
-        <p className="text-[7px] text-zinc-300 truncate flex-1 leading-tight">{scene.name}</p>
-
-        {/* Delete button */}
+      <div className="flex items-center gap-2 px-2 py-1.5 border-t border-white/5">
+        <SceneIcon type={scene.type} size={14} />
+        <p className="text-[11px] text-zinc-200 truncate flex-1 leading-tight font-medium">{scene.name}</p>
         <button
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
           }}
           className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity flex-shrink-0"
+          aria-label={`Xoá ${scene.name}`}
         >
-          <Trash2 className="w-2.5 h-2.5" />
+          <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -339,41 +336,92 @@ function PptxDetailPanel({
 }
 
 // === IMAGE DETAIL PANEL ===
+const IMAGE_FILTER_PRESETS: Array<{ value: NonNullable<Scene['imageFilter']>; label: string }> = [
+  { value: 'none', label: 'Gốc' },
+  { value: 'cinematic', label: 'Cinematic' },
+  { value: 'vivid', label: 'Rực rỡ' },
+  { value: 'mono', label: 'Đen trắng' },
+  { value: 'warm', label: 'Ấm' },
+  { value: 'cool', label: 'Lạnh' },
+  { value: 'neon', label: 'Neon' },
+]
+
 function ImageDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate: (updates: Partial<Scene>) => void; onDelete: () => void }) {
-  const [scale, setScale] = useState(100)
+  const scale = scene.imageScale ?? 100
+  const rotate = scene.imageRotate ?? 0
+  const imageX = scene.imageX ?? 0
+  const imageY = scene.imageY ?? 0
+  const imageFit = scene.imageFit || 'contain'
+  const imageFilter = scene.imageFilter || 'none'
+
+  const resetImage = () => {
+    onUpdate({ imageScale: 100, imageRotate: 0, imageX: 0, imageY: 0, imageFit: 'contain', imageFilter: 'none' })
+    toast.success('Đã reset ảnh')
+  }
 
   return (
-    <div className="p-2 bg-blue-900/10 border border-blue-700/20 rounded-lg space-y-1.5">
+    <div className="p-2 bg-blue-900/10 border border-blue-700/20 rounded-lg space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Image className="w-3.5 h-3.5 text-blue-400" />
-          <span className="text-[10px] font-medium text-blue-200 truncate max-w-[120px]">{scene.name}</span>
+          <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
+          <span className="text-[10px] font-medium text-blue-200 truncate max-w-[160px]">{scene.name}</span>
         </div>
         <Button size="sm" variant="ghost" onClick={onDelete} className="text-red-400 hover:text-red-300 h-5 w-5 p-0">
           <Trash2 className="w-3 h-3" />
         </Button>
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <ZoomOut className="w-3 h-3 text-zinc-500" />
-        <Slider
-          value={[scale]}
-          onValueChange={([v]) => { setScale(v); onUpdate({ name: scene.name }) }}
-          min={25}
-          max={200}
-          step={5}
-          className="flex-1"
-        />
-        <ZoomIn className="w-3 h-3 text-zinc-500" />
-        <span className="text-[8px] text-zinc-400 w-7 text-right">{scale}%</span>
+      <div className="grid grid-cols-3 gap-1">
+        {(['contain', 'cover', 'fill'] as const).map((fit) => (
+          <Button
+            key={fit}
+            size="sm"
+            variant="ghost"
+            onClick={() => onUpdate({ imageFit: fit })}
+            className={`h-6 text-[9px] border ${imageFit === fit ? 'border-blue-400/60 bg-blue-500/20 text-blue-100' : 'border-zinc-700 text-zinc-400'}`}
+          >
+            {fit === 'contain' ? 'Fit' : fit === 'cover' ? 'Cover' : 'Fill'}
+          </Button>
+        ))}
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <ZoomOut className="w-3 h-3 text-zinc-500" />
+          <Slider value={[scale]} onValueChange={([v]) => onUpdate({ imageScale: v })} min={25} max={250} step={5} className="flex-1" />
+          <ZoomIn className="w-3 h-3 text-zinc-500" />
+          <span className="text-[8px] text-zinc-400 w-8 text-right">{scale}%</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[8px] text-zinc-500 w-9">X/Y</span>
+          <Slider value={[imageX]} onValueChange={([v]) => onUpdate({ imageX: v })} min={-50} max={50} step={1} className="flex-1" />
+          <Slider value={[imageY]} onValueChange={([v]) => onUpdate({ imageY: v })} min={-50} max={50} step={1} className="flex-1" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <RotateCcw className="w-3 h-3 text-zinc-500" />
+          <Slider value={[rotate]} onValueChange={([v]) => onUpdate({ imageRotate: v })} min={-180} max={180} step={1} className="flex-1" />
+          <span className="text-[8px] text-zinc-400 w-10 text-right">{rotate}°</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1">
+        {IMAGE_FILTER_PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            onClick={() => onUpdate({ imageFilter: preset.value })}
+            className={`h-6 rounded border text-[8px] transition-colors ${imageFilter === preset.value ? 'border-blue-400/60 bg-blue-500/20 text-blue-100' : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-200'}`}
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-1">
-        <Button size="sm" variant="ghost" onClick={() => setScale(100)} className="text-zinc-400 hover:text-white h-5 text-[8px] px-1.5">
-          <RotateCcw className="w-2.5 h-2.5 mr-0.5" /> Reset
+        <Button size="sm" variant="ghost" onClick={resetImage} className="text-zinc-400 hover:text-white h-6 text-[9px] px-2 border border-zinc-700">
+          <RotateCcw className="w-3 h-3 mr-1" /> Reset
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setScale(200)} className="text-zinc-400 hover:text-white h-5 text-[8px] px-1.5">
-          <Maximize2 className="w-2.5 h-2.5 mr-0.5" /> Fit
+        <Button size="sm" variant="ghost" onClick={() => onUpdate({ imageScale: 120, imageFilter: 'neon' })} className="text-emerald-300 hover:text-emerald-200 h-6 text-[9px] px-2 border border-emerald-700/50">
+          <SlidersHorizontal className="w-3 h-3 mr-1" /> Neon nhanh
         </Button>
       </div>
     </div>
@@ -469,6 +517,14 @@ function VideoDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdat
 }
 
 // === TEXT DETAIL PANEL ===
+const TEXT_SCENE_TEMPLATES = [
+  { label: 'Tiêu đề Neon', content: 'CHƯƠNG TRÌNH BẮT ĐẦU', fontSize: 76, fontColor: '#bbf7d0', bgColor: '#020617', textAlign: 'center' as const },
+  { label: 'Lời kêu gọi', content: 'Xin mời quý vị cùng đứng', fontSize: 58, fontColor: '#ffffff', bgColor: '#064e3b', textAlign: 'center' as const },
+  { label: 'Tạm nghỉ', content: 'TẠM NGHỈ 10 PHÚT\nVui lòng quay lại đúng giờ', fontSize: 54, fontColor: '#fde68a', bgColor: '#111827', textAlign: 'center' as const },
+  { label: 'Cảnh báo', content: 'THÔNG BÁO KHẨN', fontSize: 72, fontColor: '#fecaca', bgColor: '#450a0a', textAlign: 'center' as const },
+  { label: 'Cảm ơn', content: 'XIN CẢM ƠN', fontSize: 82, fontColor: '#ffffff', bgColor: '#0f172a', textAlign: 'center' as const },
+]
+
 function TextDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate: (updates: Partial<Scene>) => void; onDelete: () => void }) {
   const [content, setContent] = useState(scene.content || '')
   const [fontSize, setFontSize] = useState(scene.fontSize || 48)
@@ -500,12 +556,30 @@ function TextDetailPanel({ scene, onUpdate, onDelete }: { scene: Scene; onUpdate
         </Button>
       </div>
 
+      <div className="grid grid-cols-2 gap-1">
+        {TEXT_SCENE_TEMPLATES.map((template) => (
+          <button
+            key={template.label}
+            onClick={() => {
+              setContent(template.content)
+              setFontSize(template.fontSize)
+              setFontColor(template.fontColor)
+              setBgColor(template.bgColor)
+              setTextAlign(template.textAlign)
+            }}
+            className="rounded border border-yellow-700/30 bg-yellow-900/10 px-2 py-1 text-left text-[9px] text-yellow-100 hover:border-yellow-400/60"
+          >
+            {template.label}
+          </button>
+        ))}
+      </div>
+
       <Textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder="Nhập nội dung..."
-        className="bg-zinc-900 border-zinc-600 text-zinc-200 text-[10px] min-h-[40px] resize-y"
-        rows={2}
+        className="bg-zinc-900 border-zinc-600 text-zinc-200 text-[10px] min-h-[56px] resize-y"
+        rows={3}
       />
 
       <div className="flex items-center gap-1">
@@ -939,47 +1013,48 @@ export function SceneList() {
         </div>
       </div>
 
-      {/* Grid of scene boxes - 3 per row */}
+      {/* Larger responsive scene cards */}
       <ScrollArea className="flex-1 min-h-0">
         {scenes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
-            <Image className="w-10 h-10 mb-2 opacity-30" aria-hidden />
+            <ImageIcon className="w-10 h-10 mb-2 opacity-30" aria-hidden />
             <p className="text-xs">Chưa có thành phần nào</p>
             <p className="text-[10px] mt-1">Nhấn &quot;+&quot; hoặc kéo thả file vào đây</p>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={visibleSceneIds} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-4 gap-1">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-2 pr-1">
                 {gridItems.map((item) => {
                   if (item.type === 'pptx-group' && item.groupId) {
                     const firstSlide = item.groupFirstSlide
-                    const isSelected = selectedSceneId === item.groupId || 
-                      (firstSlide && pptxGroups.get(item.groupId)?.slides.some(s => s.id === selectedSceneId))
-                    const isNext = scenes.findIndex((s) => s.pptxFileId === item.groupId) === nextSceneIndex ||
-                      (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === nextSceneIndex)
-                    const isCurrent = scenes.findIndex((s) => s.pptxFileId === item.groupId) === currentSceneIndex ||
-                      (firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === currentSceneIndex)
+                    const groupId = item.groupId
+                    const isSelected = selectedSceneId === groupId || 
+                      Boolean(firstSlide && pptxGroups.get(groupId)?.slides.some(s => s.id === selectedSceneId))
+                    const isNext = scenes.findIndex((s) => s.pptxFileId === groupId) === nextSceneIndex ||
+                      Boolean(firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === nextSceneIndex)
+                    const isCurrent = scenes.findIndex((s) => s.pptxFileId === groupId) === currentSceneIndex ||
+                      Boolean(firstSlide && scenes.findIndex((s) => s.id === firstSlide.id) === currentSceneIndex)
 
                     return (
                       <SortableGridItem
-                        key={item.groupId}
-                        scene={firstSlide || { id: item.groupId, type: 'pptx-slide', name: item.groupFileName || 'PPTX', order: 0 }}
+                        key={groupId}
+                        scene={firstSlide || { id: groupId, type: 'pptx-slide', name: item.groupFileName || 'PPTX', order: 0 }}
                         displayIndex={item.displayIndex}
                         isNext={isNext}
                         isCurrent={isCurrent}
                         onClick={() => {
-                          const idx = scenes.findIndex((s) => s.pptxFileId === item.groupId)
+                          const idx = scenes.findIndex((s) => s.pptxFileId === groupId)
                           if (idx >= 0) {
-                            if (selectedSceneId === item.groupId) {
+                            if (selectedSceneId === groupId) {
                               setSelectedSceneId(null)
                             } else {
                               selectAsNext(idx)
-                              setSelectedSceneId(item.groupId)
+                              setSelectedSceneId(groupId)
                             }
                           }
                         }}
-                        onDelete={() => deletePptxGroup(item.groupId)}
+                        onDelete={() => deletePptxGroup(groupId)}
                       />
                     )
                   }
@@ -1182,6 +1257,7 @@ const OVERLAY_TEMPLATES = [
     id: 'lower-third',
     label: 'Thanh dưới',
     icon: '▬',
+    text: 'Tên diễn giả • Chủ đề đang trình bày',
     fontSize: 36,
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.75)',
@@ -1193,6 +1269,7 @@ const OVERLAY_TEMPLATES = [
     id: 'scrolling-text',
     label: 'Chạy chữ',
     icon: '↔',
+    text: 'Thông báo chạy chữ: vui lòng giữ trật tự và theo dõi chương trình',
     fontSize: 40,
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.7)',
@@ -1204,6 +1281,7 @@ const OVERLAY_TEMPLATES = [
     id: 'center-title',
     label: 'Tiêu đề giữa',
     icon: '✦',
+    text: 'THÔNG BÁO',
     fontSize: 64,
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.6)',
@@ -1215,6 +1293,7 @@ const OVERLAY_TEMPLATES = [
     id: 'corner-notify',
     label: 'Thông báo góc',
     icon: '📍',
+    text: 'Lưu ý: chương trình sẽ bắt đầu trong ít phút',
     fontSize: 24,
     fontColor: '#ffffff',
     bgColor: 'rgba(0,0,0,0.65)',
@@ -1226,12 +1305,49 @@ const OVERLAY_TEMPLATES = [
     id: 'scrolling-top',
     label: 'Chạy chữ trên',
     icon: '📢',
+    text: 'KHẨN: Vui lòng di chuyển theo hướng dẫn của ban tổ chức',
     fontSize: 32,
     fontColor: '#ffffff',
     bgColor: 'rgba(200,0,0,0.8)',
     position: 'top' as const,
     animation: 'scroll' as const,
     scrollDuration: 20,
+  },
+  {
+    id: 'schedule',
+    label: 'Lịch trình',
+    icon: '⏱',
+    text: 'Tiếp theo: tiết mục / phần trình bày kế tiếp',
+    fontSize: 28,
+    fontColor: '#d1fae5',
+    bgColor: 'rgba(6,78,59,0.85)',
+    position: 'bottom' as const,
+    animation: 'static' as const,
+    scrollDuration: 15,
+  },
+  {
+    id: 'welcome',
+    label: 'Chào mừng',
+    icon: '★',
+    text: 'Chào mừng quý vị đến với chương trình',
+    fontSize: 44,
+    fontColor: '#bbf7d0',
+    bgColor: 'rgba(2,6,23,0.78)',
+    position: 'center' as const,
+    animation: 'static' as const,
+    scrollDuration: 15,
+  },
+  {
+    id: 'typewriter-alert',
+    label: 'Gõ chữ',
+    icon: '⌨',
+    text: 'Nội dung đang được cập nhật...',
+    fontSize: 34,
+    fontColor: '#ffffff',
+    bgColor: 'rgba(15,23,42,0.82)',
+    position: 'center' as const,
+    animation: 'typewriter' as const,
+    scrollDuration: 15,
   },
 ]
 
@@ -1284,6 +1400,7 @@ export function TextOverlayPanel() {
     setFormPosition(template.position)
     setFormAnimation(template.animation || 'static')
     setFormScrollDuration(template.scrollDuration || 15)
+    setNewText(template.text)
     if (!showForm) setShowForm(true)
   }
 
@@ -1467,6 +1584,12 @@ export function ControlPanel() {
     screenSize,
     setScreenSize,
     updateScene,
+    annotationTool,
+    annotationColor,
+    annotationSize,
+    setAnnotationTool,
+    setAnnotationStyle,
+    clearAnnotations,
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
@@ -1500,6 +1623,12 @@ export function ControlPanel() {
     return ''
   })
   const [showApiKeyInput, setShowApiKeyInput] = useState(false)
+  const [pptxMode, setPptxMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('showflow-pptx-mode') || 'offline'
+    }
+    return 'offline'
+  })
 
   // Sync state when current scene changes
   const [prevTransitionSceneId, setPrevTransitionSceneId] = useState<string | undefined>(currentScene?.id)
@@ -1686,6 +1815,35 @@ export function ControlPanel() {
 
       <div className="h-px bg-zinc-800" />
 
+      {/* Section: Bút chỉ / vẽ */}
+      <div className="space-y-1.5 p-1.5 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
+        <div className="flex items-center justify-between">
+          <span className="text-[8px] text-emerald-300 uppercase tracking-wider font-medium">Bút chỉ / vẽ lên slide</span>
+          <button onClick={clearAnnotations} className="text-[8px] text-zinc-500 hover:text-red-300 flex items-center gap-1">
+            <Eraser className="w-3 h-3" /> Xoá nét
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          <Button size="sm" variant="ghost" onClick={() => setAnnotationTool(annotationTool === 'laser' ? 'none' : 'laser')} className={`text-[9px] h-7 border ${annotationTool === 'laser' ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-zinc-700 text-zinc-400'}`}>
+            <MousePointer2 className="w-3 h-3 mr-1" /> Laser
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setAnnotationTool(annotationTool === 'pen' ? 'none' : 'pen')} className={`text-[9px] h-7 border ${annotationTool === 'pen' ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-zinc-700 text-zinc-400'}`}>
+            <PenTool className="w-3 h-3 mr-1" /> Vẽ
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setAnnotationTool('none')} className="text-[9px] h-7 border border-zinc-700 text-zinc-400">
+            Tắt
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="color" value={annotationColor} onChange={(e) => setAnnotationStyle({ annotationColor: e.target.value })} className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent" />
+          <Slider value={[annotationSize]} onValueChange={([v]) => setAnnotationStyle({ annotationSize: v })} min={2} max={16} step={1} className="flex-1" />
+          <span className="text-[8px] text-zinc-400 w-8 text-right">{annotationSize}px</span>
+        </div>
+        <p className="text-[8px] text-zinc-500 leading-snug">Bật Laser/Vẽ rồi thao tác trực tiếp trên khung “Đang chiếu”; nét sẽ đồng bộ sang Output nội bộ, không cần Internet.</p>
+      </div>
+
+      <div className="h-px bg-zinc-800" />
+
       {/* Section: Hiệu ứng */}
       <div className="space-y-1">
         <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Hiệu ứng</span>
@@ -1859,7 +2017,11 @@ export function ControlPanel() {
         </button>
         {showApiKeyInput && (
           <div className="p-1.5 bg-zinc-800/50 rounded-md space-y-1">
-            <p className="text-[7px] text-zinc-500">API key để chuyển đổi PPTX chính xác (miễn phí 25 phút/ngày tại cloudconvert.com)</p>
+            <p className="text-[7px] text-zinc-500">Mặc định dùng chế độ Offline nhanh. Chỉ bật Server/Cloud khi cần chuyển đổi PPTX chính xác hơn.</p>
+            <div className="grid grid-cols-2 gap-1">
+              <Button size="sm" variant="ghost" onClick={() => { setPptxMode('offline'); localStorage.setItem('showflow-pptx-mode', 'offline') }} className={`h-6 text-[8px] border ${pptxMode === 'offline' ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-zinc-700 text-zinc-400'}`}>Offline nhanh</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setPptxMode('server'); localStorage.setItem('showflow-pptx-mode', 'server') }} className={`h-6 text-[8px] border ${pptxMode === 'server' ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-100' : 'border-zinc-700 text-zinc-400'}`}>Server/Cloud HD</Button>
+            </div>
             <div className="flex items-center gap-1">
               <Input
                 type="password"

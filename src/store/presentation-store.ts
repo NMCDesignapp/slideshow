@@ -28,6 +28,9 @@ export type TransitionType =
   | 'bounce'
   | 'elastic'
   | 'glitch'
+  | 'neon-scan'
+  | 'matrix'
+  | 'flash'
 
 export interface TransitionOption {
   value: TransitionType
@@ -78,6 +81,9 @@ export const TRANSITION_OPTIONS: TransitionOption[] = [
   { value: 'spin', label: 'Spin', description: 'Xoay 360°', icon: '💫', group: '3d' },
   // Special
   { value: 'glitch', label: 'Glitch', description: 'Hiệu ứng nhiễu kỹ thuật số', icon: '⚡', group: 'special' },
+  { value: 'neon-scan', label: 'Neon Scan', description: 'Quét line neon xanh', icon: '🟢', group: 'special' },
+  { value: 'matrix', label: 'Matrix', description: 'Rơi dữ liệu xanh lá', icon: '▥', group: 'special' },
+  { value: 'flash', label: 'Flash', description: 'Chớp sáng nhanh', icon: '✨', group: 'special' },
 ]
 
 export const DEFAULT_TRANSITION_DURATION = 600 // ms
@@ -109,7 +115,28 @@ export interface Scene {
   sceneTransitionType?: TransitionType
   /** Per-slide transition duration override */
   sceneTransitionDuration?: number
+  /** Image transform controls */
+  imageScale?: number
+  imageRotate?: number
+  imageX?: number
+  imageY?: number
+  imageFit?: 'contain' | 'cover' | 'fill'
+  imageFilter?: 'none' | 'cinematic' | 'vivid' | 'mono' | 'warm' | 'cool' | 'neon'
 }
+
+export interface AnnotationPoint {
+  x: number
+  y: number
+}
+
+export interface AnnotationPath {
+  id: string
+  color: string
+  size: number
+  points: AnnotationPoint[]
+}
+
+export type AnnotationTool = 'none' | 'laser' | 'pen'
 
 export interface TextOverlay {
   id: string
@@ -145,7 +172,18 @@ interface PresentationState {
   screenSize: { width: number; height: number }
   // Selected scene for detail panel
   selectedSceneId: string | null
+  annotationTool: AnnotationTool
+  annotationColor: string
+  annotationSize: number
+  pointerPosition: AnnotationPoint | null
+  annotationPaths: AnnotationPath[]
   setSelectedSceneId: (id: string | null) => void
+  setAnnotationTool: (tool: AnnotationTool) => void
+  setAnnotationStyle: (style: Partial<Pick<PresentationState, 'annotationColor' | 'annotationSize'>>) => void
+  setPointerPosition: (position: AnnotationPoint | null) => void
+  startAnnotationPath: (point: AnnotationPoint) => void
+  appendAnnotationPoint: (point: AnnotationPoint) => void
+  clearAnnotations: () => void
 
   // Actions
   addScene: (scene: Omit<Scene, 'id' | 'order'>) => void
@@ -196,7 +234,32 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
   videoMuted: false,
   screenSize: { width: 1920, height: 1080 },
   selectedSceneId: null,
+  annotationTool: 'none',
+  annotationColor: '#39ff14',
+  annotationSize: 5,
+  pointerPosition: null,
+  annotationPaths: [],
   setSelectedSceneId: (id) => set({ selectedSceneId: id }),
+  setAnnotationTool: (tool) => set({ annotationTool: tool, pointerPosition: tool === 'none' ? null : get().pointerPosition }),
+  setAnnotationStyle: (style) => set(style),
+  setPointerPosition: (position) => set({ pointerPosition: position }),
+  startAnnotationPath: (point) => {
+    const id = `draw-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    set((state) => ({
+      annotationPaths: [
+        ...state.annotationPaths,
+        { id, color: state.annotationColor, size: state.annotationSize, points: [point] },
+      ],
+    }))
+  },
+  appendAnnotationPoint: (point) => set((state) => {
+    const annotationPaths = [...state.annotationPaths]
+    const lastPath = annotationPaths[annotationPaths.length - 1]
+    if (!lastPath) return state
+    annotationPaths[annotationPaths.length - 1] = { ...lastPath, points: [...lastPath.points, point] }
+    return { annotationPaths }
+  }),
+  clearAnnotations: () => set({ annotationPaths: [], pointerPosition: null }),
 
   addScene: (scene) => {
     const id = `scene-${++sceneIdCounter}-${Date.now()}`

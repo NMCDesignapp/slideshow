@@ -3,6 +3,7 @@
 import React from 'react'
 import { usePresentationStore } from '@/store/presentation-store'
 import { TransitionRenderer, MediaRenderer } from './media-renderer'
+import { AnnotationLayer } from './annotation-layer'
 import {
   Monitor,
   MonitorOff,
@@ -31,6 +32,14 @@ export function PreviewPanel() {
     stopLive,
     setOutputWindowRef,
     screenSize,
+    annotationTool,
+    annotationColor,
+    annotationSize,
+    pointerPosition,
+    annotationPaths,
+    setPointerPosition,
+    startAnnotationPath,
+    appendAnnotationPoint,
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
@@ -225,6 +234,22 @@ export function PreviewPanel() {
                     <Monitor className="w-12 h-12 mx-auto mb-2 opacity-30" />
                     <p className="text-[10px]">Chưa có nội dung</p>
                   </div>
+                </div>
+              )}
+              <AnnotationLayer
+                tool={annotationTool}
+                pointerPosition={pointerPosition}
+                paths={annotationPaths}
+                color={annotationColor}
+                size={annotationSize}
+                interactive={annotationTool !== 'none'}
+                onPointerMove={setPointerPosition}
+                onStartPath={startAnnotationPath}
+                onAppendPoint={appendAnnotationPoint}
+              />
+              {annotationTool !== 'none' && (
+                <div className="absolute bottom-2 left-2 z-[70] rounded bg-black/70 px-2 py-1 text-[9px] text-emerald-200 border border-emerald-400/30">
+                  {annotationTool === 'laser' ? 'Đang dùng bút chỉ laser' : 'Đang vẽ lên slide'}
                 </div>
               )}
             </div>

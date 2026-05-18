@@ -10,7 +10,6 @@ import {
   ChevronRight,
   Square,
   Play,
-  Pause,
   Radio,
   ArrowRight,
 } from 'lucide-react'
@@ -37,39 +36,34 @@ export function PreviewPanel() {
   const currentScene = scenes[currentSceneIndex]
   const nextScene = scenes[nextSceneIndex]
 
-  // Aspect ratio for previews
-  const aspectRatio = screenSize.width / screenSize.height
-
-  // Handle Go Live button - open output window and go live
+  // Handle Go Live button - open output window
   const handleGoLive = () => {
-    // If already live, just stop
     if (isLive) {
       stopLive()
       return
     }
 
-    // Open output window
+    // Open output window on second monitor
     const outputUrl = window.location.origin + '/output'
-    // Try to position on second monitor
-    const secondMonitorX = window.screen.width
+    const secondMonitorX = (window.screenLeft || window.screenX) + window.screen.width
     const newWindow = window.open(
       outputUrl,
       'showflow-output',
-      `width=1920,height=1080,left=${secondMonitorX},top=0,fullscreen=yes`
+      `width=1920,height=1080,left=${secondMonitorX},top=0`
     )
 
     if (newWindow) {
       setOutputWindowRef(newWindow)
       goLive()
-      toast.success('Đã bật chiếu! Di chuyển cửa sổ output sang màn hình 2.')
+      toast.success('Đã bật chiếu! Kéo cửa sổ sang màn hình 2, nhấn F11 để toàn màn hình.', { duration: 5000 })
     } else {
-      toast.error('Trình duyệt đã chặn popup. Vui lòng cho phép popup.')
+      toast.error('Trình duyệt đã chặn popup! Cho phép popup cho trang này rồi thử lại.', { duration: 6000 })
     }
   }
 
   return (
     <div className="flex gap-1.5 flex-1 min-h-0 h-full items-stretch">
-      {/* LEFT - Screen 2: "TIẾP THEO" (Next to project) */}
+      {/* LEFT - Screen 2: "TIẾP THEO" (Next up) */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex items-center gap-1.5 mb-1">
           <div className="flex items-center justify-center w-4 h-4 rounded bg-emerald-600/20 border border-emerald-500/40">
@@ -80,13 +74,18 @@ export function PreviewPanel() {
             Tiếp theo
           </span>
         </div>
-        <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-emerald-800/50 relative">
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="relative max-w-full max-h-full" style={{ aspectRatio: `${screenSize.width} / ${screenSize.height}` }}>
+        <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-emerald-800/50 relative flex items-center justify-center">
+          <div 
+            className="w-full h-full flex items-center justify-center"
+          >
+            <div 
+              className="relative w-full h-full"
+              style={{ aspectRatio: `${screenSize.width} / ${screenSize.height}`, maxHeight: '100%', maxWidth: '100%' }}
+            >
               {nextScene ? (
                 <MediaRenderer scene={nextScene} isActive={false} isPreview={true} />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-zinc-700">
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-700">
                   <div className="text-center">
                     <MonitorOff className="w-8 h-8 mx-auto mb-1 opacity-30" />
                     <p className="text-[9px]">Chọn mục từ danh sách</p>
@@ -182,9 +181,12 @@ export function PreviewPanel() {
             </span>
           )}
         </div>
-        <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-zinc-700 relative">
+        <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-zinc-700 relative flex items-center justify-center">
           <div className="w-full h-full flex items-center justify-center">
-            <div className="relative max-w-full max-h-full" style={{ aspectRatio: `${screenSize.width} / ${screenSize.height}` }}>
+            <div 
+              className="relative w-full h-full"
+              style={{ aspectRatio: `${screenSize.width} / ${screenSize.height}`, maxHeight: '100%', maxWidth: '100%' }}
+            >
               {blackScreen ? (
                 <div className="absolute inset-0 bg-black flex items-center justify-center">
                   <div className="text-zinc-700 text-center">
@@ -202,7 +204,7 @@ export function PreviewPanel() {
                   isPreview={true}
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-600">
                   <div className="text-center">
                     <Monitor className="w-12 h-12 mx-auto mb-2 opacity-30" />
                     <p className="text-[10px]">Chưa có nội dung</p>

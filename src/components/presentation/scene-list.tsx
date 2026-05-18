@@ -1013,7 +1013,7 @@ export function SceneList() {
 
       {/* Detail panel - fixed section at bottom, always visible when selected */}
       {selectedScene && (
-        <div className="mt-1.5 border-t border-zinc-800 pt-1.5 overflow-y-auto max-h-[50%]">
+        <div className="mt-1.5 border-t border-zinc-800 pt-1.5 overflow-y-auto max-h-[60%] animate-in slide-in-from-bottom-2 duration-200">
           {selectedScene.type === 'pptx-slide' && selectedScene.pptxFileId && (
             <PptxDetailPanel
               scenes={scenes}
@@ -1323,6 +1323,15 @@ export function ControlPanel() {
   const [trimStartInput, setTrimStartInput] = useState<string>('')
   const [trimEndInput, setTrimEndInput] = useState<string>('')
 
+  // CloudConvert API key
+  const [cloudConvertKey, setCloudConvertKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('showflow-cloudconvert-key') || ''
+    }
+    return ''
+  })
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false)
+
   // Sync state when current scene changes
   const [prevTransitionSceneId, setPrevTransitionSceneId] = useState<string | undefined>(currentScene?.id)
   if (currentScene?.id !== prevTransitionSceneId) {
@@ -1424,9 +1433,13 @@ export function ControlPanel() {
 
   // === PROJECTION BUTTONS ===
   const handleStartProjection = async () => {
+    // Check if there are scenes
+    if (scenes.length === 0) {
+      toast.error('Chưa có nội dung để chiếu! Thêm ảnh/video/slide trước.')
+      return
+    }
     goLive()
     openOutputWindow()
-    toast.success('Đã bắt đầu chiếu cục bộ')
   }
 
   const handleStartOnlineProjection = async () => {
@@ -1447,55 +1460,88 @@ export function ControlPanel() {
   }
 
   const openOutputWindow = () => {
+    // Try Presentation API first (for smart TVs/Chromecast)
     if ('presentation' in navigator) {
-      const presentationRequest = new (navigator as any).PresentationRequest([
-        window.location.href + '#output',
-      ])
-      presentationRequest.start().then(() => {}).catch(() => fallbackOpenWindow())
-    } else {
-      fallbackOpenWindow()
+      try {
+        const presentationRequest = new (navigator as any).PresentationRequest([
+          window.location.href + '#output',
+        ])
+        presentationRequest.start().then(() => {
+          toast.success('Đã kết nối màn hình trình chiếu')
+        }).catch(() => fallbackOpenWindow())
+        return
+      } catch {
+        // Fall through to popup method
+      }
     }
+    fallbackOpenWindow()
   }
 
   const fallbackOpenWindow = () => {
+    // Detect second monitor position
+    const screenLeft = window.screenLeft || window.screenX
+    const screenWidth = window.screen.width
+
+    // Try to position window on second monitor (right side)
+    const secondMonitorX = screenLeft + screenWidth
+
     const w = window.open(
       '/output',
-      'presentation_output',
-      `width=${screenSize.width},height=${screenSize.height},menubar=no,toolbar=no,location=no,status=no`
+      'showflow_output',
+      `width=1920,height=1080,left=${secondMonitorX},top=0,menubar=no,toolbar=no,location=no,status=no`
     )
-    if (w) {
-      setOutputWindowRef(w)
-      const checkLoaded = setInterval(() => {
-        try {
-          if (w.document && w.document.readyState === 'complete') {
-            clearInterval(checkLoaded)
-            const state = usePresentationStore.getState() as any
-            const cs = state.scenes[state.currentSceneIndex]
-            w.postMessage(
-              {
-                type: 'PRESENTATION_UPDATE',
-                payload: state.blackScreen
-                  ? { type: 'black' }
-                  : cs
-                    ? {
-                        type: 'scene',
-                        scene: cs,
-                        overlays: state.textOverlays,
-                        transitionType: cs.sceneTransitionType || state.transitionType,
-                        transitionDuration: cs.sceneTransitionDuration || state.transitionDuration,
-                        videoVolume: state.videoVolume,
-                        videoMuted: state.videoMuted,
-                      }
-                    : { type: 'empty' },
-              },
-              window.location.origin
-            )
-          }
-        } catch {
-          clearInterval(checkLoaded)
-        }
-      }, 100)
+
+    if (!w) {
+      // Popup was blocked!
+      toast.error('Trình duyệt đã chặn popup! Vui lòng cho phép popup cho trang web này.', {
+        duration: 6000,
+        description: 'Nhấn vào biểu tượng popup bị chặn trong thanh địa chỉ → Cho phép'
+      })
+      stopLive()
+      return
     }
+
+    setOutputWindowRef(w)
+
+    // Wait for window to load, then send initial state and try fullscreen
+    const checkLoaded = setInterval(() => {
+      try {
+        if (w.document && w.document.readyState === 'complete') {
+          clearInterval(checkLoaded)
+
+          // Send initial state
+          const state = usePresentationStore.getState() as any
+          const cs = state.scenes[state.currentSceneIndex]
+          w.postMessage(
+            {
+              type: 'PRESENTATION_UPDATE',
+              payload: state.blackScreen
+                ? { type: 'black' }
+                : cs
+                  ? {
+                      type: 'scene',
+                      scene: cs,
+                      overlays: state.textOverlays,
+                      transitionType: cs.sceneTransitionType || state.transitionType,
+                      transitionDuration: cs.sceneTransitionDuration || state.transitionDuration,
+                      videoVolume: state.videoVolume,
+                      videoMuted: state.videoMuted,
+                    }
+                  : { type: 'empty' },
+            },
+            window.location.origin
+          )
+
+          // Show guidance toast
+          toast.success('Đã mở cửa sổ trình chiếu!', {
+            duration: 5000,
+            description: 'Kéo cửa sổ sang màn hình 2 → Nhấn F11 để toàn màn hình'
+          })
+        }
+      } catch {
+        clearInterval(checkLoaded)
+      }
+    }, 100)
   }
 
   // === VIDEO TRIM HANDLERS ===
@@ -1521,7 +1567,7 @@ export function ControlPanel() {
         Điều khiển
       </h3>
 
-      {/* Row 1 - Projection controls */}
+      {/* Section: Chiếu */}
       <div className="space-y-1">
         <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Chiếu</span>
         <div className="grid grid-cols-3 gap-1">
@@ -1544,7 +1590,9 @@ export function ControlPanel() {
         </div>
       </div>
 
-      {/* Row 2 - Navigation */}
+      <div className="h-px bg-zinc-800" />
+
+      {/* Section: Điều hướng */}
       <div className="space-y-1">
         <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Điều hướng</span>
         <div className="flex items-center gap-1">
@@ -1560,11 +1608,11 @@ export function ControlPanel() {
         </div>
       </div>
 
-      {/* Row 3 - Settings */}
-      <div className="space-y-1">
-        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Cài đặt</span>
+      <div className="h-px bg-zinc-800" />
 
-        {/* Transition select */}
+      {/* Section: Hiệu ứng */}
+      <div className="space-y-1">
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Hiệu ứng</span>
         <Select value={customTransitionType} onValueChange={(v) => {
           setCustomTransitionType(v as TransitionType)
           if (currentScene) updateScene(currentScene.id, { sceneTransitionType: v as TransitionType })
@@ -1585,8 +1633,6 @@ export function ControlPanel() {
             ))}
           </SelectContent>
         </Select>
-
-        {/* Transition duration */}
         <div className="flex items-center gap-1">
           <span className="text-[8px] text-zinc-500 w-8">Tốc độ</span>
           <Slider value={[customTransitionDuration]} onValueChange={([v]) => {
@@ -1595,8 +1641,13 @@ export function ControlPanel() {
           }} min={100} max={3000} step={50} className="flex-1" />
           <span className="text-[8px] text-zinc-400 w-8 text-right">{customTransitionDuration}ms</span>
         </div>
+      </div>
 
-        {/* Volume */}
+      <div className="h-px bg-zinc-800" />
+
+      {/* Section: Âm thanh */}
+      <div className="space-y-1">
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Âm thanh</span>
         <div className="flex items-center gap-1">
           <Volume2 className="w-3 h-3 text-zinc-500" />
           <Slider value={[videoVolume * 100]} onValueChange={([v]) => setVideoVolume(v / 100)} min={0} max={100} className="flex-1" />
@@ -1604,8 +1655,13 @@ export function ControlPanel() {
             {videoMuted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3" />}
           </button>
         </div>
+      </div>
 
-        {/* Screen size */}
+      <div className="h-px bg-zinc-800" />
+
+      {/* Section: Kích thước */}
+      <div className="space-y-1">
+        <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Kích thước</span>
         <Select value={screenPreset} onValueChange={handleScreenPresetChange}>
           <SelectTrigger className="h-6 bg-zinc-900 border-zinc-700 text-zinc-300 text-[9px]">
             <SelectValue />
@@ -1628,7 +1684,9 @@ export function ControlPanel() {
 
       {/* Video controls (only when current is video) */}
       {isVideoScene && (
-        <div className="space-y-1 p-1.5 bg-zinc-800/50 rounded-md">
+        <>
+          <div className="h-px bg-zinc-800" />
+          <div className="space-y-1 p-1.5 bg-zinc-800/50 rounded-md">
           <div className="flex items-center gap-1.5">
             <Button size="sm" variant="ghost" onClick={handleVideoPauseToggle} className="text-purple-400 h-5 w-5 p-0">
               {videoPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
@@ -1642,9 +1700,12 @@ export function ControlPanel() {
             <Input type="number" value={trimEndInput} onChange={(e) => setTrimEndInput(e.target.value)} placeholder="hết" className="h-4 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 w-12" min={0} step={0.1} />
           </div>
         </div>
+        </>
       )}
 
-      {/* Row 4 - Project */}
+      <div className="h-px bg-zinc-800" />
+
+      {/* Section: Dự án */}
       <div className="space-y-1">
         <span className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium">Dự án</span>
         <div className="grid grid-cols-3 gap-1">
@@ -1677,6 +1738,35 @@ export function ControlPanel() {
           </div>
         </div>
       )}
+
+      {/* CloudConvert API Key */}
+      <div className="space-y-1">
+        <button 
+          onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+          className="text-[8px] text-zinc-600 uppercase tracking-wider font-medium hover:text-zinc-400 transition-colors flex items-center gap-1"
+        >
+          <Settings className="w-2.5 h-2.5" /> PPTX Cloud
+        </button>
+        {showApiKeyInput && (
+          <div className="p-1.5 bg-zinc-800/50 rounded-md space-y-1">
+            <p className="text-[7px] text-zinc-500">API key để chuyển đổi PPTX chính xác (miễn phí 25 phút/ngày tại cloudconvert.com)</p>
+            <div className="flex items-center gap-1">
+              <Input
+                type="password"
+                value={cloudConvertKey}
+                onChange={(e) => {
+                  setCloudConvertKey(e.target.value)
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('showflow-cloudconvert-key', e.target.value)
+                  }
+                }}
+                placeholder="CloudConvert API Key"
+                className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[8px] px-1 flex-1"
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

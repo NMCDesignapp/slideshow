@@ -33,10 +33,20 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
 async function convertPptxServer(file: File): Promise<PptxSlide[]> {
   const formData = new FormData()
   formData.append('file', file)
+  
+  // Pass CloudConvert API key from localStorage if available
+  const headers: Record<string, string> = {}
+  if (typeof window !== 'undefined') {
+    const cloudKey = localStorage.getItem('showflow-cloudconvert-key')
+    if (cloudKey) {
+      headers['x-cloudconvert-key'] = cloudKey
+    }
+  }
 
   const response = await fetch('/api/convert-pptx', {
     method: 'POST',
     body: formData,
+    headers,
   })
 
   if (!response.ok) {

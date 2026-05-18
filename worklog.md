@@ -1,153 +1,81 @@
----
-Task ID: 1
-Agent: main
-Task: Build ShowFlow - Presentation Application
+# ShowFlow Worklog - 2026-05-18
 
-Work Log:
-- Initialized Next.js 16 project with fullstack tooling
-- Installed jszip for PPTX parsing and lucide-react for icons
-- Created Zustand store (presentation-store.ts) with scene management, text overlays, live mode, black screen
-- Created PPTX parser (pptx-parser.ts) that extracts slides as SVG from .pptx files
-- Created MediaRenderer component supporting image, video, web, text, pptx-slide types
-- Created AddSceneDialog with tabs for adding images, videos, web pages, text, and PPTX files
-- Created SceneList with drag-and-drop reorder (dnd-kit) and text overlay panel
-- Created PreviewPanel with dual preview (live + next) and control bar
-- Created output page (/output) for projector screen with postMessage sync
-- Built main page with resizable panels (vertical + horizontal)
-- Added keyboard shortcuts (arrows, space, B)
-- Applied dark theme, custom scrollbar, animations
-- Fixed lint warnings and icon import issues
+## Changes Made
 
-Stage Summary:
-- ShowFlow presentation app is fully functional
-- Supports: images, videos, web embeds, text slides, PPTX files
-- Dual preview: large (current) + small (next)
-- Dual-screen output via window.open with postMessage sync
-- Drag-and-drop scene reordering
-- Text notification overlays
-- Keyboard shortcuts for control
-- Dark theme optimized for presentation environments
+### Task 1: Fix Projection (Chiếu) Button - CRITICAL ✅
+**File:** `src/components/presentation/scene-list.tsx`
 
----
-Task ID: 2
-Agent: main
-Task: Add transition effects and swap preview positions
+- Replaced `openOutputWindow` function:
+  - Added try/catch around Presentation API to gracefully fallback
+  - Added success toast when Presentation API connects
+- Replaced `fallbackOpenWindow` function:
+  - Added second monitor detection using `window.screenLeft + window.screen.width`
+  - Opens window at `left=${secondMonitorX}` to auto-position on second monitor
+  - Added popup-blocked detection with clear Vietnamese error toast (6s duration) with instructions
+  - Calls `stopLive()` if popup is blocked to clean up state
+  - Added guidance toast (5s) telling user to drag window to monitor 2 and press F11
+- Updated `handleStartProjection`:
+  - Added empty scenes check with error toast
+  - Removed redundant `toast.success('Đã bắt đầu chiếu cục bộ')` since `openOutputWindow` now shows its own toast
 
-Work Log:
-- Added 25 transition effects in 6 groups: Basic, Slide, Zoom, Wipe, 3D, Special
-- New effects: Blur, Elastic, Bounce, Wipe Up/Down, Curtain Left/Right, Split H/V, Flip X, Spin, Glitch
-- Upgraded TransitionRenderer to cross-transition (old scene exits + new scene enters simultaneously)
-- Swapped preview positions: "Đang chiếu" (LIVE) is now on the RIGHT, "Tiếp theo" is on the LEFT
-- Updated transition picker with grouped Select (SelectGroup + SelectLabel)
-- Each transition has icon, label, and description
-- Added all CSS animations for new transitions in globals.css
-- Updated Output page to support cross-transition with prevScene tracking
-- All animations use CSS `both` fill mode for proper enter/exit behavior
+### Task 2: Fix Preview Panel - Screen Layout + 16:9 Fill ✅
+**File:** `src/components/presentation/preview-panel.tsx`
 
-Stage Summary:
-- 25 transition effects across 6 categories
-- Cross-transition: old + new scene visible during transition
-- Preview: "Đang chiếu" on RIGHT, "Tiếp theo" on LEFT
-- Grouped transition selector with icons and descriptions
+- Rewrote entire PreviewPanel component
+- Screen 2 (Tiếp theo) remains LEFT, Screen 1 (Đang chiếu) remains RIGHT (correct per user request)
+- Fixed 16:9 aspect ratio: Changed from `max-w-full max-h-full` with `aspectRatio` to `w-full h-full` with `maxHeight: '100%', maxWidth: '100%'` on the container div
+- Added `flex items-center justify-center` to both preview containers for proper centering
+- Updated `handleGoLive` with improved second monitor detection and better toast messages
 
----
-Task ID: 3
-Agent: main
-Task: Background playback, move controls down, PPTX slide navigator, volume control
+### Task 3: Add CloudConvert API Integration for PPTX ✅
+**File:** `src/app/api/convert-pptx/route.ts`
 
-Work Log:
-- Fixed background playback: video keeps playing when user switches to another tab/app
-  - Added visibilitychange + blur handlers to force play on focus loss
-  - Added Screen Wake Lock API in output window to prevent browser throttling
-  - Added playsInline attribute on video elements
-- Moved all control buttons (navigation, transition, black screen, live/stop) to bottom control bar
-  - Preview area is now clean with just the dual preview
-  - ControlPanel component sits at the bottom of the page
-- Added PPTX Slide Navigator
-  - When current scene is a PPTX slide, the left panel transforms into a vertical slide thumbnail list
-  - All slides from same PPTX file are grouped via pptxFileId
-  - Click any thumbnail to jump to that slide
-  - Active slide highlighted with green border + LIVE badge
-- Added Volume Control for video scenes
-  - Volume slider appears in control bar when current scene is video
-  - Mute/unmute toggle button
-  - Volume synced to output window via postMessage
-- Added pptxFileId grouping for PPTX slides
-  - All slides from one PPTX upload share the same pptxFileId
-  - Enables slide navigator feature
-- Restructured layout: header (minimal) → preview (top) → edit panels (middle) → control bar (bottom)
+- Completely rewrote the route with two conversion backends:
+  1. **LibreOffice** (preferred) - cached availability check, same conversion flow
+  2. **CloudConvert API** (fallback) - uses `cloudconvert` npm package
+     - Creates job with upload → convert to PNG → export URL pipeline
+     - Downloads result images and converts to base64 data URLs
+     - Requires `CLOUDCONVERT_API_KEY` environment variable
+- Returns clear error messages when neither LibreOffice nor CloudConvert is available
 
-Stage Summary:
-- Background playback works when switching apps
-- All controls moved to bottom control bar
-- PPTX slide navigator shows in left panel when viewing PPTX
-- Volume control for video scenes
-- Clean preview area with just the content
+### Task 4: Add CloudConvert API Key Setting to ControlPanel ✅
+**File:** `src/components/presentation/scene-list.tsx` (ControlPanel component)
 
----
-Task ID: info
-Agent: main
-Task: Save new Vercel deployment URL
+- Added state: `cloudConvertKey` (initialized from localStorage), `showApiKeyInput`
+- Added collapsible "PPTX Cloud" section at bottom of ControlPanel
+- Section shows Settings icon + "PPTX Cloud" label
+- When expanded: shows explanation text and password input for API key
+- Key is saved to `localStorage` on every change
 
-Work Log:
-- User deployed to a NEW Vercel project
-- Old URL: https://my-project-delta-one-86.vercel.app (no longer used)
-- New URL saved
+**New file:** `src/app/api/convert-pptx/cloud-key/route.ts`
+- GET endpoint that checks if CloudConvert API key is available (from header or env)
 
-Stage Summary:
-- New Vercel URL: https://slideshow-gvku2s8k5-charlienc1604-5790s-projects.vercel.app
-- GitHub repo: NMCDesignapp/slideshow
-- This is the active deployment URL going forward
----
-Task ID: 1
-Agent: Main Agent
-Task: Fix UI issues - 16:9 aspect ratio, detail panel, compact boxes, rearrange controls
+### Task 5: Fix PPTX Parser to Pass CloudConvert Key ✅
+**File:** `src/lib/pptx-parser.ts`
 
-Work Log:
-- Analyzed uploaded screenshot with VLM to understand layout issues
-- Read all relevant source files (page.tsx, preview-panel.tsx, scene-list.tsx)
-- Fixed 16:9 aspect ratio display: screens now use flexbox with aspectRatio style on inner container, properly centered within available height
-- Fixed PPTX group detail panel: pptxGroups Map is now built BEFORE selectedScene lookup, so selectedScene correctly falls back to first slide when selectedItemId is a groupId
-- Reduced box height by ~50%: replaced aspect-video thumbnail with compact single-row layout (mini thumbnail 8x5px, inline number/icon/name/delete)
-- Changed grid from 3 columns to 4 columns for compact items
-- Made control buttons more compact: h-6/w-6 buttons, smaller text, tighter spacing
-- Reduced padding/margins throughout (p-2→p-1.5, gap-2→gap-1)
-- Navigation center column made more compact (h-8→h-8, gap-1.5)
-- Page layout adjusted: scene list 55%, controls 45%, reduced padding
+- Updated `convertPptxServer` function to pass `x-cloudconvert-key` header
+- Reads key from `localStorage.getItem('showflow-cloudconvert-key')` on client side
+- Passes as custom header in the fetch request to the convert API
 
-Stage Summary:
-- 16:9 screens now properly fill their containers
-- Clicking PPTX group box now correctly shows PptxDetailPanel
-- Scene list boxes are now ~50% shorter (single-row compact layout)
-- Controls are more compact and organized
-- Build passes successfully
+### Task 7: Fix Click on Scene Box to Expand Detail Panel ✅
+**File:** `src/components/presentation/scene-list.tsx`
 
----
-Task ID: 1
-Agent: full-stack-developer
-Task: Fix ShowFlow UI issues (screen layout, projection, 16:9, detail panel, box size, control panel)
+- Changed detail panel `max-h-[50%]` to `max-h-[60%]` for more visible space
+- Added `animate-in slide-in-from-bottom-2 duration-200` animation class for smooth appearance
 
-Work Log:
-- Swapped Screen 1 (Đang chiếu) to RIGHT and Screen 2 (Tiếp theo) to LEFT in preview-panel.tsx
-- Fixed projection "Chiếu" button to open output window on second monitor: added handleGoLive() that opens popup at screen.width offset, sets outputWindowRef, calls goLive(), with toast feedback
-- Added toast import from sonner in preview-panel.tsx
-- Fixed 16:9 display: changed aspect-ratio container from `w-full` to `max-w-full max-h-full` with proper aspectRatio style using `${screenSize.width} / ${screenSize.height}`
-- Fixed detail panel: added `overflow-y-auto max-h-[50%]` to detail panel container so it scrolls when content exceeds space
-- Fixed item click toggle: clicking same item again now deselects it (sets selectedItemId to null) for both regular scenes and PPTX groups
-- Reduced scene box height by 50%: changed `py-0.5` to `py-px`, `w-8 h-5` to `w-6 h-4`, `text-[8px]` to `text-[7px]`, `min-w-[12px]` to `min-w-[10px]`
-- Rearranged ControlPanel into 4 organized rows with section labels:
-  - Row 1 (Chiếu): Chiếu, Dừng, Màn hình đen
-  - Row 2 (Điều hướng): ← Trước, slide counter, Tiếp →
-  - Row 3 (Cài đặt): Transition select, Duration slider, Volume, Screen size
-  - Row 4 (Dự án): Online, Lưu, Mở
-- Video controls shown conditionally when current scene is video
-- Build passes successfully with no errors
+### Task 8: Rearrange Control Panel Buttons ✅
+**File:** `src/components/presentation/scene-list.tsx` (ControlPanel component)
 
-Stage Summary:
-- Screen 2 (Tiếp theo) now on LEFT, Screen 1 (Đang chiếu) on RIGHT
-- Projection button opens output window on second monitor
-- 16:9 previews properly fill available space while maintaining aspect ratio
-- Detail panel has scrollable overflow with max height constraint
-- Click-to-toggle behavior for scene item selection
-- Scene boxes ~50% more compact (smaller padding, thumbnails, text, badges)
-- Control panel organized into 4 labeled rows for clarity
+- Reorganized from 4 rows to 6 clearly separated sections:
+  1. **Chiếu** - Chiếu | Dừng | Đen
+  2. **Điều hướng** - Trước | counter | Tiếp
+  3. **Hiệu ứng** - Transition select + Duration slider (grouped together)
+  4. **Âm thanh** - Volume slider + Mute button (own section)
+  5. **Kích thước** - Screen size preset + custom size
+  6. **Video** - (conditional) Pause + Trim controls
+  7. **Dự án** - Online | Lưu | Mở
+- Added `<div className="h-px bg-zinc-800" />` dividers between sections
+- Changed section labels from generic "Cài đặt" to specific names
+
+### Additional
+- Installed `cloudconvert` npm package

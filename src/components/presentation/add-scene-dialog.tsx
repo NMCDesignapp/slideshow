@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from 'react'
 import { usePresentationStore, SceneType, Scene } from '@/store/presentation-store'
-import { parsePptx, svgToDataUrl } from '@/lib/pptx-parser'
+import { parsePptx } from '@/lib/pptx-parser'
 import {
   Image,
   Video,
@@ -139,11 +139,10 @@ export function AddSceneDialog() {
             const slides = await parsePptx(file)
             const pptxFileId = `pptx-${++pptxCounter}-${file.name}`
             for (const slide of slides) {
-              const dataUrl = svgToDataUrl(slide.svg)
               addScene({
                 type: 'pptx-slide',
                 name: `Slide ${slide.index}`,
-                src: dataUrl,
+                src: slide.src,
                 slideIndex: slide.index,
                 pptxFileId,
                 pptxFileName: file.name,

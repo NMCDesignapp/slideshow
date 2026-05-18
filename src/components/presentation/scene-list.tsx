@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { usePresentationStore, TRANSITION_OPTIONS, TRANSITION_GROUPS, TransitionType, Scene } from '@/store/presentation-store'
-import { parsePptx, svgToDataUrl } from '@/lib/pptx-parser'
+import { parsePptx } from '@/lib/pptx-parser'
 import { setVideoPaused, isVideoPaused } from './media-renderer'
 import {
   DndContext,
@@ -337,11 +337,10 @@ export function SceneList() {
           const slides = await parsePptx(file)
           const pptxFileId = `pptx-${++pptxCounter}-${file.name}`
           for (const slide of slides) {
-            const dataUrl = svgToDataUrl(slide.svg)
             addScene({
               type: 'pptx-slide',
               name: `Slide ${slide.index}`,
-              src: dataUrl,
+              src: slide.src,
               slideIndex: slide.index,
               pptxFileId,
               pptxFileName: file.name,
@@ -379,11 +378,10 @@ export function SceneList() {
           const slides = await parsePptx(file)
           const pptxFileId = `pptx-${++pptxCounter}-${file.name}`
           for (const slide of slides) {
-            const dataUrl = svgToDataUrl(slide.svg)
             addScene({
               type: 'pptx-slide',
               name: `Slide ${slide.index}`,
-              src: dataUrl,
+              src: slide.src,
               slideIndex: slide.index,
               pptxFileId,
               pptxFileName: file.name,

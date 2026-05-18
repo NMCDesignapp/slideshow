@@ -2,16 +2,65 @@ import JSZip from 'jszip'
 
 interface PptxSlide {
   index: number
-  /** SVG string of the slide */
-  svg: string
+  /** Data URL of the slide image (PNG from server conversion, or SVG data URL from fallback) */
+  src: string
 }
 
 /**
- * Parse a PPTX file and extract slides as SVG.
- * PPTX is a ZIP containing XML files. We render each slide to SVG
- * by extracting shapes, text, and images.
+ * Parse a PPTX file and extract slides as images.
+ * Tries server-side LibreOffice conversion first (100% accurate),
+ * falls back to client-side SVG rendering if server is unavailable.
  */
 export async function parsePptx(file: File): Promise<PptxSlide[]> {
+  // Try server-side conversion first
+  try {
+    const serverResult = await convertPptxServer(file)
+    if (serverResult && serverResult.length > 0) {
+      return serverResult
+    }
+  } catch (err) {
+    console.warn('Server-side PPTX conversion failed, falling back to client-side:', err)
+  }
+
+  // Fallback to client-side SVG rendering
+  return parsePptxClientSide(file)
+}
+
+/**
+ * Server-side PPTX conversion using LibreOffice + pdftoppm
+ * Produces pixel-perfect PNG images of each slide.
+ */
+async function convertPptxServer(file: File): Promise<PptxSlide[]> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch('/api/convert-pptx', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Server error: ${response.status}`)
+  }
+
+  const data = await response.json()
+
+  if (!data.success || !data.slides) {
+    throw new Error(data.error || 'Server conversion failed')
+  }
+
+  return data.slides.map((slide: { index: number; dataUrl: string }) => ({
+    index: slide.index,
+    src: slide.dataUrl,
+  }))
+}
+
+/**
+ * Client-side fallback: Parse PPTX ZIP and render slides as SVG.
+ * Less accurate than server-side conversion but works offline.
+ */
+async function parsePptxClientSide(file: File): Promise<PptxSlide[]> {
   let arrayBuffer: ArrayBuffer
   try {
     arrayBuffer = await file.arrayBuffer()
@@ -44,7 +93,7 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
 
   slideFiles.sort((a, b) => a.index - b.index)
 
-  // Extract images from the PPTX (single pass, properly awaited)
+  // Extract images from the PPTX
   const imageMap = new Map<string, string>()
   const imageEntries: Promise<void>[] = []
   zip.forEach((relativePath, zipEntry) => {
@@ -66,7 +115,7 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
   await Promise.all(imageEntries)
 
   // Parse relationship files to map rId -> media path
-  const relsMap = new Map<string, Map<string, string>>() // slide rels: slidePath -> (rId -> mediaPath)
+  const relsMap = new Map<string, Map<string, string>>()
   const relsEntries: Promise<void>[] = []
   zip.forEach((relativePath, zipEntry) => {
     if (relativePath.match(/^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/) && !zipEntry.dir) {
@@ -79,9 +128,7 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
           while ((relMatch = relRegex.exec(relsXml)) !== null) {
             const rId = relMatch[1]
             let target = relMatch[2]
-            // Only process image relationships
             if (!relMatch[0].includes('image') && !target.includes('media')) continue
-            // Target is relative to ppt/slides/, resolve to full path
             if (target.startsWith('../')) {
               target = 'ppt/' + target.replace('../', '')
             } else if (!target.startsWith('ppt/')) {
@@ -96,6 +143,9 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
   })
   await Promise.all(relsEntries)
 
+  // Parse theme XML for color resolution
+  const themeColors = await parseThemeColors(zip)
+
   const slides: PptxSlide[] = []
 
   for (const slideFile of slideFiles) {
@@ -103,16 +153,16 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
     if (!xml) continue
 
     try {
-      const svg = renderSlideToSvg(xml, imageMap, relsMap, slideFile.index)
-      slides.push({ index: slideFile.index, svg })
+      const svg = renderSlideToSvg(xml, imageMap, relsMap, slideFile.index, themeColors)
+      const dataUrl = svgToDataUrl(svg)
+      slides.push({ index: slideFile.index, src: dataUrl })
     } catch (err) {
       console.error(`Error rendering slide ${slideFile.index}:`, err)
-      // Add a placeholder SVG for failed slides
       const placeholderSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720">` +
         `<rect width="960" height="720" fill="#f5f5f5"/>` +
         `<text x="480" y="360" text-anchor="middle" font-size="24" fill="#999" font-family="Arial">Slide ${slideFile.index} - Lỗi hiển thị</text>` +
         `</svg>`
-      slides.push({ index: slideFile.index, svg: placeholderSvg })
+      slides.push({ index: slideFile.index, src: svgToDataUrl(placeholderSvg) })
     }
   }
 
@@ -124,7 +174,74 @@ export async function parsePptx(file: File): Promise<PptxSlide[]> {
 }
 
 /**
- * Determine if background is dark or light, to set default text color accordingly
+ * Parse theme XML from ppt/theme/theme1.xml to extract actual color scheme
+ */
+async function parseThemeColors(zip: JSZip): Promise<Map<string, string>> {
+  const colorMap = new Map<string, string>()
+
+  try {
+    const themeXml = await zip.file('ppt/theme/theme1.xml')?.async('string')
+    if (!themeXml) return colorMap
+
+    // Extract the color scheme from <a:clrScheme>
+    const clrSchemeMatch = themeXml.match(/<a:clrScheme[^>]*name="[^"]*"[^>]*>([\s\S]*?)<\/a:clrScheme>/)
+    if (!clrSchemeMatch) return colorMap
+
+    const clrXml = clrSchemeMatch[1]
+
+    // Map each color entry: <a:dk1><a:srgbClr val="..."/></a:dk1>
+    const colorEntries: [string, RegExp][] = [
+      ['dk1', /<a:dk1[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['lt1', /<a:lt1[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['dk2', /<a:dk2[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['lt2', /<a:lt2[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['accent1', /<a:accent1[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['accent2', /<a:accent2[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['accent3', /<a:accent3[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['accent4', /<a:accent4[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['accent5', /<a:accent5[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['accent6', /<a:accent6[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['hlink', /<a:hlink[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+      ['folHlink', /<a:folHlink[^>]*>[\s\S]*?<a:srgbClr val="([^"]+)"/],
+    ]
+
+    for (const [name, regex] of colorEntries) {
+      const match = clrXml.match(regex)
+      if (match) {
+        colorMap.set(name, `#${match[1]}`)
+      }
+    }
+
+    // Also check for sysClr (system colors like "windowText" → usually black)
+    const sysColorEntries: [string, RegExp][] = [
+      ['dk1', /<a:dk1[^>]*>[\s\S]*?<a:sysClr val="[^"]*" lastClr="([^"]+)"/],
+      ['lt1', /<a:lt1[^>]*>[\s\S]*?<a:sysClr val="[^"]*" lastClr="([^"]+)"/],
+    ]
+
+    for (const [name, regex] of sysColorEntries) {
+      if (!colorMap.has(name)) {
+        const match = clrXml.match(regex)
+        if (match) {
+          colorMap.set(name, `#${match[1]}`)
+        }
+      }
+    }
+
+    // tx1 and tx2 are aliases for dk1/dk2 in text context
+    if (colorMap.has('dk1')) colorMap.set('tx1', colorMap.get('dk1')!)
+    if (colorMap.has('dk2')) colorMap.set('tx2', colorMap.get('dk2')!)
+    if (colorMap.has('lt1')) colorMap.set('bg1', colorMap.get('lt1')!)
+    if (colorMap.has('lt2')) colorMap.set('bg2', colorMap.get('lt2')!)
+
+  } catch (err) {
+    console.warn('Failed to parse theme colors:', err)
+  }
+
+  return colorMap
+}
+
+/**
+ * Determine if background is dark or light
  */
 function isLightColor(hexColor: string): boolean {
   const hex = hexColor.replace('#', '')
@@ -132,7 +249,6 @@ function isLightColor(hexColor: string): boolean {
   const r = parseInt(hex.substring(0, 2), 16)
   const g = parseInt(hex.substring(2, 4), 16)
   const b = parseInt(hex.substring(4, 6), 16)
-  // Relative luminance
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   return luminance > 0.5
 }
@@ -141,49 +257,92 @@ function renderSlideToSvg(
   xml: string,
   imageMap: Map<string, string>,
   relsMap: Map<string, Map<string, string>>,
-  slideIndex: number
+  slideIndex: number,
+  themeColors: Map<string, string>
 ): string {
-  // Standard slide dimensions (9144000 x 6858000 EMU = 10" x 7.5")
   const width = 960
   const height = 720
+  const EMU_WIDTH = 9144000
+  const EMU_HEIGHT = 6858000
 
   const shapes: string[] = []
 
-  // Parse background first to determine text color defaults
+  // Parse background
   let bgFill = '#ffffff'
   const bgMatch = xml.match(/<p:bg[^>]*>[\s\S]*?<a:solidFill>[\s\S]*?<a:srgbClr val="([^"]+)"/)
   if (bgMatch) {
     bgFill = `#${bgMatch[1]}`
   }
-  // Also check for gradient backgrounds
   if (bgFill === '#ffffff') {
     const gradBgMatch = xml.match(/<p:bg[^>]*>[\s\S]*?<a:gradFill>[\s\S]*?<a:srgbClr val="([^"]+)"/)
     if (gradBgMatch) {
       bgFill = `#${gradBgMatch[1]}`
     }
   }
+  // Check for scheme color in background
+  if (bgFill === '#ffffff') {
+    const bgSchemeMatch = xml.match(/<p:bg[^>]*>[\s\S]*?<a:schemeClr val="([^"]+)"/)
+    if (bgSchemeMatch) {
+      const resolved = themeColors.get(bgSchemeMatch[1])
+      if (resolved) bgFill = resolved
+    }
+  }
 
   const bgIsLight = isLightColor(bgFill)
   const defaultTextColor = bgIsLight ? '#333333' : '#ffffff'
 
-  // Parse text elements (improved with paragraph and bullet support)
-  const textElements = extractTextElements(xml, defaultTextColor)
-  for (const el of textElements) {
-    const x = (el.x / 9144000) * width
-    const y = (el.y / 6858000) * height
-    const w = (el.w / 9144000) * width
-    const h = (el.h / 6858000) * height
+  // Parse shape fills first (render behind text)
+  const shapeElements = extractShapeFills(xml, themeColors)
+  for (const shape of shapeElements) {
+    const x = (shape.x / EMU_WIDTH) * width
+    const y = (shape.y / EMU_HEIGHT) * height
+    const w = (shape.w / EMU_WIDTH) * width
+    const h = (shape.h / EMU_HEIGHT) * height
+    shapes.push(
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${shape.fill}" rx="0"/>`
+    )
+  }
 
-    // Build paragraphs HTML
+  // Parse images (render behind text, on top of shape fills)
+  const imageElements = extractImageElements(xml, slideIndex)
+  for (const img of imageElements) {
+    const x = (img.x / EMU_WIDTH) * width
+    const y = (img.y / EMU_HEIGHT) * height
+    const w = (img.w / EMU_WIDTH) * width
+    const h = (img.h / EMU_HEIGHT) * height
+
+    const slideRels = relsMap.get(String(slideIndex))
+    const mediaPath = slideRels?.get(img.rId)
+    const src = mediaPath ? imageMap.get(mediaPath) : imageMap.get(img.rId) || ''
+
+    if (src) {
+      shapes.push(
+        `<image x="${x}" y="${y}" width="${w}" height="${h}" href="${src}" preserveAspectRatio="xMidYMid meet"/>`
+      )
+    }
+  }
+
+  // Parse text elements
+  const textElements = extractTextElements(xml, defaultTextColor, themeColors)
+  for (const el of textElements) {
+    const x = (el.x / EMU_WIDTH) * width
+    const y = (el.y / EMU_HEIGHT) * height
+    const w = (el.w / EMU_WIDTH) * width
+    const h = (el.h / EMU_HEIGHT) * height
+
     const paragraphsHtml = el.paragraphs.map((para) => {
       const indent = para.level > 0 ? `margin-left:${para.level * 20}px;` : ''
-      const bulletPrefix = para.bullet ? '• ' : ''
+      const bulletPrefix = para.bullet ? '\u2022 ' : ''
       const paraAlign = para.align || el.align || 'left'
       return `<p style="margin:2px 0;${indent}text-align:${paraAlign};">` +
         para.runs.map((run) => {
-          const fontSize = Math.max(10, (run.fontSize / 9144000) * width * 0.8)
+          // FIX: Correct font size conversion
+          // sz in PPTX is in hundredths of a point (e.g., sz="2400" = 24pt)
+          // 1pt = 12700 EMU, so 1/100pt = 127 EMU
+          // Rendered size = (fontSizeEMU / EMU_WIDTH) * pixelWidth
+          const fontSizePx = Math.max(8, (run.fontSize / EMU_WIDTH) * width)
           return `<span style="` +
-            `font-size:${fontSize}px;` +
+            `font-size:${fontSizePx.toFixed(1)}px;` +
             `color:${run.color};` +
             `font-weight:${run.bold ? 'bold' : 'normal'};` +
             `font-style:${run.italic ? 'italic' : 'normal'};` +
@@ -198,43 +357,12 @@ function renderSlideToSvg(
         `<div xmlns="http://www.w3.org/1999/xhtml" style="` +
         `font-family:Arial,sans-serif;` +
         `word-wrap:break-word;` +
-        `overflow:hidden;` +
+        `overflow:visible;` +
         `padding:4px;` +
-        `line-height:1.3;` +
+        `line-height:1.2;` +
+        `box-sizing:border-box;` +
         `">${paragraphsHtml}</div>` +
         `</foreignObject>`
-    )
-  }
-
-  // Parse images
-  const imageElements = extractImageElements(xml, slideIndex)
-  for (const img of imageElements) {
-    const x = (img.x / 9144000) * width
-    const y = (img.y / 6858000) * height
-    const w = (img.w / 9144000) * width
-    const h = (img.h / 6858000) * height
-
-    // Resolve rId -> media path -> data URL
-    const slideRels = relsMap.get(String(slideIndex))
-    const mediaPath = slideRels?.get(img.rId)
-    const src = mediaPath ? imageMap.get(mediaPath) : imageMap.get(img.rId) || ''
-
-    if (src) {
-      shapes.push(
-        `<image x="${x}" y="${y}" width="${w}" height="${h}" href="${src}" preserveAspectRatio="xMidYMid meet"/>`
-      )
-    }
-  }
-
-  // Parse shape fills (rectangles with solid fill, useful for background shapes)
-  const shapeElements = extractShapeFills(xml)
-  for (const shape of shapeElements) {
-    const x = (shape.x / 9144000) * width
-    const y = (shape.y / 6858000) * height
-    const w = (shape.w / 9144000) * width
-    const h = (shape.h / 6858000) * height
-    shapes.unshift(
-      `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${shape.fill}" rx="0"/>`
     )
   }
 
@@ -248,7 +376,7 @@ function renderSlideToSvg(
 
 interface TextRun {
   text: string
-  fontSize: number
+  fontSize: number  // in EMU
   color: string
   bold: boolean
   italic: boolean
@@ -271,17 +399,15 @@ interface TextElement {
   align: string
 }
 
-function extractTextElements(xml: string, defaultTextColor: string): TextElement[] {
+function extractTextElements(xml: string, defaultTextColor: string, themeColors: Map<string, string>): TextElement[] {
   const elements: TextElement[] = []
 
-  // Match <p:sp> shapes
   const spRegex = /<p:sp[\s>][\s\S]*?<\/p:sp>/g
   let spMatch
 
   while ((spMatch = spRegex.exec(xml)) !== null) {
     const spXml = spMatch[0]
 
-    // Get position (xfrm)
     const posMatch = spXml.match(
       /<a:xfrm[^>]*>[\s\S]*?<a:off x="(\d+)" y="(\d+)"[^/]*\/>[\s\S]*?<a:ext cx="(\d+)" cy="(\d+)"[^/]*\/>/
     )
@@ -292,12 +418,10 @@ function extractTextElements(xml: string, defaultTextColor: string): TextElement
     const w = parseInt(posMatch[3])
     const h = parseInt(posMatch[4])
 
-    // Default shape-level alignment
     let shapeAlign = 'left'
     if (/<a:pPr[^>]*algn="ctr"/.test(spXml)) shapeAlign = 'center'
     else if (/<a:pPr[^>]*algn="r"/.test(spXml)) shapeAlign = 'right'
 
-    // Extract paragraphs from <a:p> elements
     const paragraphs: TextParagraph[] = []
     const pRegex = /<a:p[\s>][\s\S]*?<\/a:p>/g
     let pMatch
@@ -306,7 +430,6 @@ function extractTextElements(xml: string, defaultTextColor: string): TextElement
       const pXml = pMatch[0]
       const runs: TextRun[] = []
 
-      // Get paragraph-level properties
       let level = 0
       let bullet = false
       let paraAlign = shapeAlign
@@ -317,15 +440,8 @@ function extractTextElements(xml: string, defaultTextColor: string): TextElement
         const lvlMatch = pPrXml.match(/lvl="(\d+)"/)
         if (lvlMatch) level = parseInt(lvlMatch[1])
 
-        // Check for bullet character
-        if (/<a:buChar/.test(pPrXml) || /<a:buAutoNum/.test(pPrXml) || /<a:buNone/.test(pPrXml) === false && /buClr|buSzPct|buFont|buChar|buAutoNum/.test(pPrXml)) {
-          bullet = true
-        }
-        // Explicit buChar always means bullet
         if (/<a:buChar/.test(pPrXml)) bullet = true
-        // Explicit buNone means no bullet
         if (/<a:buNone/.test(pPrXml)) bullet = false
-        // If level > 0 and no explicit buNone, treat as bullet
         if (level > 0 && !/<a:buNone/.test(pPrXml)) bullet = true
 
         const alignMatch = pPrXml.match(/algn="([^"]+)"/)
@@ -336,21 +452,21 @@ function extractTextElements(xml: string, defaultTextColor: string): TextElement
         }
       }
 
-      // Extract text runs from <a:r> elements
       const rRegex = /<a:r[\s>][\s\S]*?<\/a:r>/g
       let rMatch
 
       while ((rMatch = rRegex.exec(pXml)) !== null) {
         const rXml = rMatch[0]
 
-        // Get text content
         const tMatch = rXml.match(/<a:t[^>]*>([\s\S]*?)<\/a:t>/)
         if (!tMatch) continue
         const text = tMatch[1].trim()
         if (!text) continue
 
-        // Get run properties
-        let fontSize = 1800000 // default 18pt in EMU (18 * 100 * 1000)
+        // FIX: sz is in hundredths of a point. Convert to EMU: value * 127
+        // (because 1pt = 12700 EMU, so 1/100pt = 127 EMU)
+        // Default 18pt = 1800 hundredths = 1800 * 127 = 228600 EMU
+        let fontSize = 228600 // default 18pt in EMU
         let color = defaultTextColor
         let bold = false
         let italic = false
@@ -361,47 +477,48 @@ function extractTextElements(xml: string, defaultTextColor: string): TextElement
           const rPrXml = rPrMatch[0]
 
           const szMatch = rPrXml.match(/sz="(\d+)"/)
-          if (szMatch) fontSize = parseInt(szMatch[1]) * 100 // sz is in 100ths of a point
+          if (szMatch) fontSize = parseInt(szMatch[1]) * 127 // convert hundredths of pt → EMU
 
-          // Color: check for srgbClr first (direct color)
+          // Color resolution with theme support
           const clrMatch = rPrXml.match(/<a:srgbClr val="([^"]+)"/)
           if (clrMatch) {
             color = `#${clrMatch[1]}`
           } else {
-            // Check for scheme color (theme-based)
             const schemeMatch = rPrXml.match(/<a:schemeClr val="([^"]+)"/)
             if (schemeMatch) {
-              // Map common scheme colors to reasonable defaults
               const schemeColor = schemeMatch[1]
-              switch (schemeColor) {
-                case 'tx1': case 'dk1': color = defaultTextColor; break
-                case 'tx2': case 'dk2': color = bgIsLightFromDefault(defaultTextColor) ? '#445566' : '#aabbcc'; break
-                case 'lt1': color = bgIsLightFromDefault(defaultTextColor) ? '#ffffff' : '#ffffff'; break
-                case 'lt2': color = bgIsLightFromDefault(defaultTextColor) ? '#eeeeee' : '#dddddd'; break
-                case 'accent1': color = '#4472C4'; break
-                case 'accent2': color = '#ED7D31'; break
-                case 'accent3': color = '#A5A5A5'; break
-                case 'accent4': color = '#FFC000'; break
-                case 'accent5': color = '#5B9BD5'; break
-                case 'accent6': color = '#70AD47'; break
-                case 'hlink': color = '#0563C1'; break
-                default: color = defaultTextColor
+              // Try theme colors first
+              const themeResolved = themeColors.get(schemeColor)
+              if (themeResolved) {
+                color = themeResolved
+              } else {
+                // Fallback defaults
+                switch (schemeColor) {
+                  case 'tx1': case 'dk1': color = defaultTextColor; break
+                  case 'tx2': case 'dk2': color = isLightColor(defaultTextColor === '#333333' ? '#ffffff' : defaultTextColor) ? '#445566' : '#aabbcc'; break
+                  case 'lt1': color = '#ffffff'; break
+                  case 'lt2': color = '#e7e6e6'; break
+                  case 'accent1': color = '#4472C4'; break
+                  case 'accent2': color = '#ED7D31'; break
+                  case 'accent3': color = '#A5A5A5'; break
+                  case 'accent4': color = '#FFC000'; break
+                  case 'accent5': color = '#5B9BD5'; break
+                  case 'accent6': color = '#70AD47'; break
+                  case 'hlink': color = '#0563C1'; break
+                  default: color = defaultTextColor
+                }
               }
             }
-            // Check for indexed colors
             const idxMatch = rPrXml.match(/<a:idxClr idx="(\d+)"/)
             if (idxMatch) {
               const idxColors = ['#000000','#ffffff','#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff',
                 '#000000','#ffffff','#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff',
-                '#800000','#008000','#000080','#808000','#800080','#008080','#c0c0c0','#808080',
-                '#999966','#996633','#669933','#663399']
+                '#800000','#008000','#000080','#808000','#800080','#008080','#c0c0c0','#808080']
               const idx = parseInt(idxMatch[1])
               color = idxColors[idx] || defaultTextColor
             }
           }
 
-          bold = /b="1"/.test(rPrXml) || /b="true"/.test(rPrXml) || (/<a:rPr[^>]*b="[^"]*"/.test(rPrXml) === false && /<a:rPr[^>]*b="/.test(rPrXml) === false && false)
-          // More accurate bold detection - default is b="0" or missing, b="1" means bold
           bold = / b="1"/.test(rPrXml) || / b="true"/.test(rPrXml)
           italic = / i="1"/.test(rPrXml) || / i="true"/.test(rPrXml)
           underline = /<a:u/.test(rPrXml) && !/<a:uFn/.test(rPrXml)
@@ -410,35 +527,15 @@ function extractTextElements(xml: string, defaultTextColor: string): TextElement
         runs.push({ text, fontSize, color, bold, italic, underline })
       }
 
-      // If no runs found, check for end-para-run (empty paragraph)
-      if (runs.length === 0) {
-        // Skip empty paragraphs
-        continue
-      }
-
+      if (runs.length === 0) continue
       paragraphs.push({ runs, level, bullet, align: paraAlign })
     }
 
     if (paragraphs.length === 0) continue
-
-    elements.push({
-      x,
-      y,
-      w,
-      h,
-      paragraphs,
-      align: shapeAlign,
-    })
+    elements.push({ x, y, w, h, paragraphs, align: shapeAlign })
   }
 
   return elements
-}
-
-/**
- * Helper to check if the default text color implies a light background
- */
-function bgIsLightFromDefault(defaultTextColor: string): boolean {
-  return defaultTextColor === '#333333' || defaultTextColor === '#000000'
 }
 
 interface ShapeFill {
@@ -449,34 +546,43 @@ interface ShapeFill {
   fill: string
 }
 
-function extractShapeFills(xml: string): ShapeFill[] {
+function extractShapeFills(xml: string, themeColors: Map<string, string>): ShapeFill[] {
   const elements: ShapeFill[] = []
 
-  // Match <p:sp> shapes that have solid fill (but no text - background shapes)
   const spRegex = /<p:sp[\s>][\s\S]*?<\/p:sp>/g
   let spMatch
 
   while ((spMatch = spRegex.exec(xml)) !== null) {
     const spXml = spMatch[0]
 
-    // Only process shapes with <p:spPr> containing a solidFill and NO <p:txBody> text
+    // Only process shapes with solid fill and NO text
     if (!/<a:solidFill>/.test(spXml)) continue
-    if (/<a:t>/.test(spXml)) continue // Skip shapes that have text
+    if (/<a:t>/.test(spXml)) continue
 
     const posMatch = spXml.match(
       /<a:xfrm[^>]*>[\s\S]*?<a:off x="(\d+)" y="(\d+)"[^/]*\/>[\s\S]*?<a:ext cx="(\d+)" cy="(\d+)"[^/]*\/>/
     )
     if (!posMatch) continue
 
+    let fill = '#cccccc'
     const fillMatch = spXml.match(/<a:solidFill>[\s\S]*?<a:srgbClr val="([^"]+)"/)
-    if (!fillMatch) continue
+    if (fillMatch) {
+      fill = `#${fillMatch[1]}`
+    } else {
+      // Try scheme color
+      const schemeMatch = spXml.match(/<a:solidFill>[\s\S]*?<a:schemeClr val="([^"]+)"/)
+      if (schemeMatch) {
+        const resolved = themeColors.get(schemeMatch[1])
+        if (resolved) fill = resolved
+      }
+    }
 
     elements.push({
       x: parseInt(posMatch[1]),
       y: parseInt(posMatch[2]),
       w: parseInt(posMatch[3]),
       h: parseInt(posMatch[4]),
-      fill: `#${fillMatch[1]}`,
+      fill,
     })
   }
 
@@ -494,7 +600,6 @@ interface ImageElement {
 function extractImageElements(xml: string, slideIndex: number): ImageElement[] {
   const elements: ImageElement[] = []
 
-  // Match <p:pic> elements
   const picRegex = /<p:pic[\s>][\s\S]*?<\/p:pic>/g
   let picMatch
 

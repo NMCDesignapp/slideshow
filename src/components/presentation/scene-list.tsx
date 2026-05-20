@@ -271,7 +271,7 @@ export function SceneList() {
     usePresentationStore()
   const [isDragOver, setIsDragOver] = useState(false)
   const [expandedPptxGroups, setExpandedPptxGroups] = useState<Set<string>>(new Set())
-  const [isListExpanded, setIsListExpanded] = useState(false)
+  const [isListExpanded, setIsListExpanded] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const sensors = useSensors(
@@ -699,196 +699,8 @@ const OVERLAY_TEMPLATES = [
 ]
 
 /**
- * Text overlay management panel with preset templates
- */
-export function TextOverlayPanel() {
-  const { textOverlays, addTextOverlay, removeTextOverlay, toggleTextOverlay, updateTextOverlay } =
-    usePresentationStore()
-  const [newText, setNewText] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  // Form fields
-  const [formFontSize, setFormFontSize] = useState(32)
-  const [formFontColor, setFormFontColor] = useState('#ffffff')
-  const [formBgColor, setFormBgColor] = useState('rgba(0,0,0,0.7)')
-  const [formPosition, setFormPosition] = useState<'top' | 'bottom' | 'center'>('bottom')
-
-  const resetForm = () => {
-    setNewText('')
-    setFormFontSize(32)
-    setFormFontColor('#ffffff')
-    setFormBgColor('rgba(0,0,0,0.7)')
-    setFormPosition('bottom')
-    setShowForm(false)
-  }
-
-  const handleAdd = () => {
-    if (!newText.trim()) return
-    addTextOverlay({
-      text: newText,
-      visible: false,
-      fontSize: formFontSize,
-      fontColor: formFontColor,
-      bgColor: formBgColor,
-      position: formPosition,
-    })
-    resetForm()
-    toast.success('Đã thêm thông báo')
-  }
-
-  const applyTemplate = (template: typeof OVERLAY_TEMPLATES[number]) => {
-    setFormFontSize(template.fontSize)
-    setFormFontColor(template.fontColor)
-    setFormBgColor(template.bgColor)
-    setFormPosition(template.position)
-    if (!showForm) setShowForm(true)
-  }
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-1.5">
-        <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
-          <Bell className="w-3 h-3" />
-          Thông báo
-        </h3>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setShowForm(!showForm)}
-          className="text-emerald-400 hover:text-emerald-300 h-5 w-5 p-0"
-        >
-          <Plus className="w-3 h-3" />
-        </Button>
-      </div>
-
-      {/* Template presets row */}
-      <div className="flex gap-0.5 mb-1.5 flex-wrap">
-        {OVERLAY_TEMPLATES.map((template) => (
-          <button
-            key={template.id}
-            onClick={() => applyTemplate(template)}
-            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[9px] text-zinc-400 hover:text-zinc-200 transition-colors"
-            title={template.label}
-          >
-            <span className="text-[10px]">{template.icon}</span>
-            <span>{template.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {showForm && (
-        <div className="mb-1.5 p-1.5 bg-zinc-800 rounded-md space-y-1">
-          <Input
-            value={newText}
-            onChange={(e) => setNewText(e.target.value)}
-            placeholder="Nhập thông báo..."
-            className="bg-zinc-700 border-zinc-600 text-zinc-200 text-[10px] h-6"
-            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          />
-          <div className="grid grid-cols-2 gap-1">
-            <div className="flex items-center gap-1">
-              <span className="text-[8px] text-zinc-500">Cỡ</span>
-              <Input
-                type="number"
-                value={formFontSize}
-                onChange={(e) => setFormFontSize(Number(e.target.value))}
-                className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 w-12"
-                min={8}
-                max={200}
-              />
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[8px] text-zinc-500">Vị trí</span>
-              <Select value={formPosition} onValueChange={(v) => setFormPosition(v as 'top' | 'bottom' | 'center')}>
-                <SelectTrigger className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-600">
-                  <SelectItem value="top" className="text-[9px]">Trên</SelectItem>
-                  <SelectItem value="center" className="text-[9px]">Giữa</SelectItem>
-                  <SelectItem value="bottom" className="text-[9px]">Dưới</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            <div className="flex items-center gap-1">
-              <span className="text-[8px] text-zinc-500">Chữ</span>
-              <input
-                type="color"
-                value={formFontColor}
-                onChange={(e) => setFormFontColor(e.target.value)}
-                className="w-5 h-5 rounded cursor-pointer border-0"
-              />
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[8px] text-zinc-500">Nền</span>
-              <input
-                type="color"
-                value={formBgColor.startsWith('rgba') || formBgColor.startsWith('rgb') ? '#000000' : formBgColor}
-                onChange={(e) => setFormBgColor(e.target.value)}
-                className="w-5 h-5 rounded cursor-pointer border-0"
-              />
-            </div>
-          </div>
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              onClick={handleAdd}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2"
-            >
-              Thêm
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={resetForm}
-              className="text-zinc-400 text-[9px] h-5 px-2"
-            >
-              Hủy
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <ScrollArea className="flex-1">
-        {textOverlays.length === 0 ? (
-          <p className="text-[9px] text-zinc-600 text-center py-2">
-            Thêm thông báo chữ để hiện trên màn hình chiếu
-          </p>
-        ) : (
-          <div className="space-y-0.5">
-            {textOverlays.map((overlay) => (
-              <div
-                key={overlay.id}
-                className="flex items-center gap-1 px-1.5 py-1 rounded-md bg-zinc-800/50 group"
-              >
-                <button onClick={() => toggleTextOverlay(overlay.id)} className="flex-shrink-0">
-                  {overlay.visible ? (
-                    <Eye className="w-3 h-3 text-emerald-400" />
-                  ) : (
-                    <EyeOff className="w-3 h-3 text-zinc-500" />
-                  )}
-                </button>
-                <span className="text-[10px] text-zinc-300 truncate flex-1">{overlay.text}</span>
-                <span className="text-[8px] text-zinc-600">{overlay.fontSize}px</span>
-                <button
-                  onClick={() => removeTextOverlay(overlay.id)}
-                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-    </div>
-  )
-}
-
-/**
- * Control Panel - with projection buttons at bottom
- * Now includes: per-scene transition, video pause/play, all existing controls
+ * Control Panel - now includes TextOverlayPanel as a collapsible section
+ * Scrollable layout with all controls in one panel
  */
 const SCREEN_PRESETS = [
   { label: '16:9 (1920×1080)', value: '16:9', width: 1920, height: 1080 },
@@ -922,6 +734,11 @@ export function ControlPanel() {
     screenSize,
     setScreenSize,
     updateScene,
+    textOverlays,
+    addTextOverlay,
+    removeTextOverlay,
+    toggleTextOverlay,
+    updateTextOverlay,
   } = usePresentationStore() as any
 
   const currentScene = scenes[currentSceneIndex]
@@ -947,8 +764,47 @@ export function ControlPanel() {
   const [trimStartInput, setTrimStartInput] = useState<string>('')
   const [trimEndInput, setTrimEndInput] = useState<string>('')
 
+  // === TEXT OVERLAY STATE (merged from TextOverlayPanel) ===
+  const [newText, setNewText] = useState('')
+  const [showOverlayForm, setShowOverlayForm] = useState(false)
+  const [formFontSize, setFormFontSize] = useState(32)
+  const [formFontColor, setFormFontColor] = useState('#ffffff')
+  const [formBgColor, setFormBgColor] = useState('rgba(0,0,0,0.7)')
+  const [formPosition, setFormPosition] = useState<'top' | 'bottom' | 'center'>('bottom')
+  const [showOverlaySection, setShowOverlaySection] = useState(false)
+
+  const resetOverlayForm = () => {
+    setNewText('')
+    setFormFontSize(32)
+    setFormFontColor('#ffffff')
+    setFormBgColor('rgba(0,0,0,0.7)')
+    setFormPosition('bottom')
+    setShowOverlayForm(false)
+  }
+
+  const handleAddOverlay = () => {
+    if (!newText.trim()) return
+    addTextOverlay({
+      text: newText,
+      visible: false,
+      fontSize: formFontSize,
+      fontColor: formFontColor,
+      bgColor: formBgColor,
+      position: formPosition,
+    })
+    resetOverlayForm()
+    toast.success('Đã thêm thông báo')
+  }
+
+  const applyTemplate = (template: typeof OVERLAY_TEMPLATES[number]) => {
+    setFormFontSize(template.fontSize)
+    setFormFontColor(template.fontColor)
+    setFormBgColor(template.bgColor)
+    setFormPosition(template.position)
+    if (!showOverlayForm) setShowOverlayForm(true)
+  }
+
   // Sync per-scene transition state when current scene changes
-  // Using the "sync from props during render" pattern to avoid setState-in-effect lint
   const [prevTransitionSceneId, setPrevTransitionSceneId] = useState<string | undefined>(currentScene?.id)
   if (currentScene?.id !== prevTransitionSceneId) {
     setPrevTransitionSceneId(currentScene?.id)
@@ -1153,485 +1009,659 @@ export function ControlPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-1.5">
-      <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-        Điều khiển
-      </h3>
+    <div className="flex flex-col h-full overflow-hidden">
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="space-y-2 pr-1">
+          {/* Header */}
+          <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+            Điều khiển
+          </h3>
 
-      {/* Navigation row */}
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={goPrev}
-          disabled={currentSceneIndex <= 0}
-          className="text-zinc-400 hover:text-white h-7 w-7 p-0"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <span className="text-xs text-zinc-400 min-w-[42px] text-center tabular-nums">
-          {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : '0/0'}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={goNext}
-          disabled={currentSceneIndex >= scenes.length - 1}
-          className="text-zinc-400 hover:text-white h-7 w-7 p-0"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-
-        <div className="w-px h-5 bg-zinc-700 mx-0.5" />
-
-        {/* Black screen */}
-        <Tooltip>
-          <TooltipTrigger asChild>
+          {/* Navigation row */}
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="ghost"
-              onClick={toggleBlackScreen}
-              className={`h-7 gap-1 px-2 ${blackScreen ? 'text-red-400 bg-red-400/10' : 'text-zinc-400 hover:text-white'}`}
+              onClick={goPrev}
+              disabled={currentSceneIndex <= 0}
+              className="text-zinc-400 hover:text-white h-7 w-7 p-0"
             >
-              <Square className="w-3.5 h-3.5" />
-              <span className="text-[10px]">{blackScreen ? 'Bật hình' : 'Đen'}</span>
+              <ChevronLeft className="w-4 h-4" />
             </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Đen/Bật màn hình (Phím B)
-          </TooltipContent>
-        </Tooltip>
+            <span className="text-xs text-zinc-400 min-w-[42px] text-center tabular-nums">
+              {scenes.length > 0 ? `${currentSceneIndex + 1}/${scenes.length}` : '0/0'}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={goNext}
+              disabled={currentSceneIndex >= scenes.length - 1}
+              className="text-zinc-400 hover:text-white h-7 w-7 p-0"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
 
-        {/* Video pause/play button - only when video scene is active */}
-        {isVideoScene && isLive && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleVideoPauseToggle}
-                className={`h-7 gap-1 px-2 ${videoPaused ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-400 hover:text-white'}`}
-              >
-                {videoPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-                <span className="text-[10px]">{videoPaused ? 'Phát' : 'Dừng'}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-              {videoPaused ? 'Phát video trên màn hình chiếu' : 'Tạm dừng video trên màn hình chiếu'}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
+            <div className="w-px h-5 bg-zinc-700 mx-0.5" />
 
-      {/* Per-scene transition row */}
-      {currentScene && (
-        <div className="bg-zinc-800/40 rounded-md p-1.5 space-y-1 border border-zinc-700/30">
-          <div className="flex items-center gap-1.5">
-            <Checkbox
-              id="custom-transition"
-              checked={useCustomTransition}
-              onCheckedChange={(checked) => handleToggleCustomTransition(!!checked)}
-              className="h-3 w-3 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
-            />
-            <label htmlFor="custom-transition" className="text-[9px] text-zinc-400 cursor-pointer select-none">
-              Hiệu ứng riêng cho slide này
-            </label>
+            {/* Black screen */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={toggleBlackScreen}
+                  className={`h-7 gap-1 px-2 ${blackScreen ? 'text-red-400 bg-red-400/10' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span className="text-[10px]">{blackScreen ? 'Bật hình' : 'Đen'}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                Đen/Bật màn hình (Phím B)
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Video pause/play button - only when video scene is active */}
+            {isVideoScene && isLive && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleVideoPauseToggle}
+                    className={`h-7 gap-1 px-2 ${videoPaused ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    {videoPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+                    <span className="text-[10px]">{videoPaused ? 'Phát' : 'Dừng'}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                  {videoPaused ? 'Phát video trên màn hình chiếu' : 'Tạm dừng video trên màn hình chiếu'}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
-          {useCustomTransition && (
-            <div className="flex items-center gap-1.5 pl-1">
-              <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
-              <Select value={customTransitionType} onValueChange={(v) => handleCustomTransitionTypeChange(v as TransitionType)}>
-                <SelectTrigger className="h-5 flex-1 min-w-0 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px]">
-                  <SelectValue placeholder="Hiệu ứng" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[200px] overflow-y-auto">
-                  {TRANSITION_GROUPS.map((group) => (
-                    <SelectGroup key={group.key}>
-                      <SelectLabel className="text-[8px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1">
-                        {group.label}
-                      </SelectLabel>
-                      {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
-                        <SelectItem
-                          key={opt.value}
-                          value={opt.value}
-                          className="text-zinc-300 text-[9px] focus:bg-zinc-700 focus:text-white"
-                        >
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px]">{opt.icon}</span>
-                            <span>{opt.label}</span>
-                          </div>
-                        </SelectItem>
+
+          {/* Per-scene transition row */}
+          {currentScene && (
+            <div className="bg-zinc-800/40 rounded-md p-1.5 space-y-1 border border-zinc-700/30">
+              <div className="flex items-center gap-1.5">
+                <Checkbox
+                  id="custom-transition"
+                  checked={useCustomTransition}
+                  onCheckedChange={(checked) => handleToggleCustomTransition(!!checked)}
+                  className="h-3 w-3 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
+                />
+                <label htmlFor="custom-transition" className="text-[9px] text-zinc-400 cursor-pointer select-none">
+                  Hiệu ứng riêng cho slide này
+                </label>
+              </div>
+              {useCustomTransition && (
+                <div className="flex items-center gap-1.5 pl-1">
+                  <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                  <Select value={customTransitionType} onValueChange={(v) => handleCustomTransitionTypeChange(v as TransitionType)}>
+                    <SelectTrigger className="h-5 flex-1 min-w-0 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px]">
+                      <SelectValue placeholder="Hiệu ứng" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[200px] overflow-y-auto">
+                      {TRANSITION_GROUPS.map((group) => (
+                        <SelectGroup key={group.key}>
+                          <SelectLabel className="text-[8px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1">
+                            {group.label}
+                          </SelectLabel>
+                          {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
+                            <SelectItem
+                              key={opt.value}
+                              value={opt.value}
+                              className="text-zinc-300 text-[9px] focus:bg-zinc-700 focus:text-white"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px]">{opt.icon}</span>
+                                <span>{opt.label}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-              {customTransitionType !== 'none' && (
-                <div className="flex items-center gap-0.5 bg-zinc-900 rounded px-1 h-5">
-                  <Clock className="w-2 h-2 text-zinc-500 flex-shrink-0" />
-                  <Slider
-                    value={[customTransitionDuration]}
-                    onValueChange={([v]) => handleCustomTransitionDurationChange(v)}
-                    min={200}
-                    max={2000}
-                    step={100}
-                    className="w-10"
-                  />
-                  <span className="text-[8px] text-zinc-500 min-w-[24px]">{customTransitionDuration}ms</span>
+                    </SelectContent>
+                  </Select>
+                  {customTransitionType !== 'none' && (
+                    <div className="flex items-center gap-0.5 bg-zinc-900 rounded px-1 h-5">
+                      <Clock className="w-2 h-2 text-zinc-500 flex-shrink-0" />
+                      <Slider
+                        value={[customTransitionDuration]}
+                        onValueChange={([v]) => handleCustomTransitionDurationChange(v)}
+                        min={200}
+                        max={2000}
+                        step={100}
+                        className="w-10"
+                      />
+                      <span className="text-[8px] text-zinc-500 min-w-[24px]">{customTransitionDuration}ms</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* Global transition row */}
-      <div className="flex items-center gap-1.5">
-        <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
-        <Select value={transitionType} onValueChange={(v) => setTransitionType(v as TransitionType)}>
-          <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            <SelectValue placeholder="Hiệu ứng" />
-          </SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[280px] overflow-y-auto">
-            {TRANSITION_GROUPS.map((group) => (
-              <SelectGroup key={group.key}>
-                <SelectLabel className="text-[9px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1.5">
-                  {group.label}
-                </SelectLabel>
-                {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
-                  <SelectItem
-                    key={opt.value}
-                    value={opt.value}
-                    className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs">{opt.icon}</span>
-                      <span>{opt.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {transitionType !== 'none' && (
-          <div className="flex items-center gap-1 bg-zinc-800 rounded px-1.5 h-6">
-            <Clock className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
-            <Slider
-              value={[transitionDuration]}
-              onValueChange={([v]) => setTransitionDuration(v)}
-              min={200}
-              max={2000}
-              step={100}
-              className="w-14"
-            />
-            <span className="text-[9px] text-zinc-500 min-w-[28px]">{transitionDuration}ms</span>
-          </div>
-        )}
-      </div>
-
-      {/* Video volume (only when current scene is video) */}
-      {isVideoScene && (
-        <div className="flex items-center gap-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setVideoMuted(!videoMuted)}
-                className="text-zinc-400 hover:text-white transition-colors"
-              >
-                {videoMuted ? (
-                  <VolumeX className="w-3.5 h-3.5 text-red-400" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-              {videoMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
-            </TooltipContent>
-          </Tooltip>
-          <Slider
-            value={[videoMuted ? 0 : videoVolume * 100]}
-            onValueChange={([v]) => {
-              setVideoVolume(v / 100)
-              if (v > 0) setVideoMuted(false)
-            }}
-            min={0}
-            max={100}
-            step={5}
-            className="w-20"
-          />
-          <span className="text-[9px] text-zinc-500">{videoMuted ? '0%' : `${Math.round(videoVolume * 100)}%`}</span>
-        </div>
-      )}
-
-      {/* Video trim controls (only when current scene is video) */}
-      {isVideoScene && (
-        <div className="bg-zinc-800/60 rounded-md p-1.5 space-y-1.5 border border-zinc-700/50">
-          <div className="flex items-center gap-1">
-            <Scissors className="w-3 h-3 text-purple-400" />
-            <span className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">Cắt video</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-zinc-500 w-8">Bắt đầu</span>
-            <Input
-              type="number"
-              value={trimStartInput}
-              onChange={(e) => setTrimStartInput(e.target.value)}
-              placeholder="0"
-              className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
-              min={0}
-              step={0.5}
-            />
-            <span className="text-[9px] text-zinc-500">giây</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-zinc-500 w-8">Kết thúc</span>
-            <Input
-              type="number"
-              value={trimEndInput}
-              onChange={(e) => setTrimEndInput(e.target.value)}
-              placeholder="cuối"
-              className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
-              min={0}
-              step={0.5}
-            />
-            <span className="text-[9px] text-zinc-500">giây</span>
-          </div>
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              onClick={handleApplyTrim}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2 flex-1"
-            >
-              Áp dụng
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleClearTrim}
-              className="text-zinc-400 hover:text-red-400 text-[9px] h-5 px-2"
-            >
-              Xoá cắt
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Screen size selector */}
-      <div className="flex items-center gap-1.5">
-        <MonitorUp className="w-3 h-3 text-cyan-400 flex-shrink-0" />
-        <Select value={screenPreset} onValueChange={handleScreenPresetChange}>
-          <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            <SelectValue placeholder="Kích thước" />
-          </SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
-            {SCREEN_PRESETS.map((preset) => (
-              <SelectItem key={preset.value} value={preset.value} className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white">
-                {preset.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {screenPreset === 'custom' && (
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              value={customWidth}
-              onChange={(e) => setCustomWidth(Number(e.target.value))}
-              className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
-              min={320}
-              max={3840}
-            />
-            <span className="text-zinc-600 text-[9px]">×</span>
-            <Input
-              type="number"
-              value={customHeight}
-              onChange={(e) => setCustomHeight(Number(e.target.value))}
-              className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
-              min={240}
-              max={2160}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCustomSizeChange}
-              className="h-6 w-6 p-0 text-emerald-400 hover:text-emerald-300"
-            >
-              <span className="text-[9px]">✓</span>
-            </Button>
-          </div>
-        )}
-        {screenPreset !== 'custom' && (
-          <span className="text-[9px] text-zinc-600">{screenSize?.width}×{screenSize?.height}</span>
-        )}
-      </div>
-
-      {/* === PROJECTION BUTTONS === */}
-      <div className="flex items-center gap-1 pt-1 border-t border-zinc-800">
-        <Button
-          size="sm"
-          onClick={isLive ? handleStopAll : handleStartProjection}
-          className={`h-7 gap-1 px-3 flex-1 ${
-            isLive
-              ? 'bg-red-600 hover:bg-red-700 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          }`}
-        >
-          <MonitorUp className="w-3.5 h-3.5" />
-          {isLive ? (
-            <>
-              <Pause className="w-3 h-3" />
-              <span className="text-[10px]">Dừng</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3 h-3" />
-              <span className="text-[10px]">Chiếu</span>
-            </>
-          )}
-        </Button>
-
-        <Button
-          size="sm"
-          onClick={handleStartOnlineProjection}
-          className="h-7 gap-1 px-3 flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
-          disabled={isLive}
-        >
-          <GlobeIcon className="w-3.5 h-3.5" />
-          <span className="text-[10px]">Online</span>
-        </Button>
-
-        {isLive && (
-          <Button
-            size="sm"
-            onClick={handleStopAll}
-            className="h-7 gap-1 px-3 bg-red-800 hover:bg-red-900 text-white"
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span className="text-[10px]">Tắt hết</span>
-          </Button>
-        )}
-      </div>
-
-      {/* Project save/load + remote connection row */}
-      <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                saveProject()
-                toast.success('Đã lưu dự án')
-              }}
-              className="text-zinc-500 hover:text-emerald-400 h-6 gap-1 px-2"
-            >
-              <Save className="w-3 h-3" />
-              <span className="text-[9px]">Lưu</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Lưu dự án vào trình duyệt
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                loadProject()
-                toast.success('Đã mở dự án')
-              }}
-              className="text-zinc-500 hover:text-cyan-400 h-6 gap-1 px-2"
-            >
-              <FolderOpen className="w-3 h-3" />
-              <span className="text-[9px]">Mở</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Mở dự án đã lưu
-          </TooltipContent>
-        </Tooltip>
-
-        <div className="flex-1" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowRemoteInfo(!showRemoteInfo)}
-              className={`h-6 gap-1 px-2 ${showRemoteInfo ? 'text-cyan-400' : 'text-zinc-500 hover:text-cyan-400'}`}
-            >
-              <Wifi className="w-3 h-3" />
-              <span className="text-[9px]">Thiết bị khác</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
-            Chiếu từ thiết bị khác qua mạng LAN
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
-      {/* Remote connection info panel */}
-      {showRemoteInfo && (
-        <div className="bg-zinc-800/80 rounded-md p-2 space-y-2 border border-zinc-700">
+          {/* Global transition row */}
           <div className="flex items-center gap-1.5">
-            <Wifi className="w-3 h-3 text-cyan-400" />
-            <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Chiếu từ thiết bị khác</span>
+            <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
+            <Select value={transitionType} onValueChange={(v) => setTransitionType(v as TransitionType)}>
+              <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                <SelectValue placeholder="Hiệu ứng" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-800 border-zinc-700 max-h-[280px] overflow-y-auto">
+                {TRANSITION_GROUPS.map((group) => (
+                  <SelectGroup key={group.key}>
+                    <SelectLabel className="text-[9px] text-zinc-500 uppercase tracking-wider font-semibold px-2 pt-1.5">
+                      {group.label}
+                    </SelectLabel>
+                    {TRANSITION_OPTIONS.filter((opt) => opt.group === group.key).map((opt) => (
+                      <SelectItem
+                        key={opt.value}
+                        value={opt.value}
+                        className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs">{opt.icon}</span>
+                          <span>{opt.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {transitionType !== 'none' && (
+              <div className="flex items-center gap-1 bg-zinc-800 rounded px-1.5 h-6">
+                <Clock className="w-2.5 h-2.5 text-zinc-500 flex-shrink-0" />
+                <Slider
+                  value={[transitionDuration]}
+                  onValueChange={([v]) => setTransitionDuration(v)}
+                  min={200}
+                  max={2000}
+                  step={100}
+                  className="w-14"
+                />
+                <span className="text-[9px] text-zinc-500 min-w-[28px]">{transitionDuration}ms</span>
+              </div>
+            )}
           </div>
 
-          <p className="text-[9px] text-zinc-400 leading-relaxed">
-            Mở URL bên dưới trên thiết bị khác (cùng mạng WiFi/LAN) để hiển thị màn hình chiếu:
-          </p>
-
-          {outputUrl && (
-            <div className="flex items-center gap-1 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-600">
-              <code className="text-[10px] text-emerald-400 font-mono flex-1 truncate">{outputUrl}</code>
-              <button
-                onClick={copyUrl}
-                className="text-zinc-400 hover:text-white transition-colors flex-shrink-0"
-              >
-                {copied ? (
-                  <span className="text-[8px] text-emerald-400">Đã copy!</span>
-                ) : (
-                  <Copy className="w-3 h-3" />
-                )}
-              </button>
+          {/* Video volume (only when current scene is video) */}
+          {isVideoScene && (
+            <div className="flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setVideoMuted(!videoMuted)}
+                    className="text-zinc-400 hover:text-white transition-colors"
+                  >
+                    {videoMuted ? (
+                      <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                  {videoMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
+                </TooltipContent>
+              </Tooltip>
+              <Slider
+                value={[videoMuted ? 0 : videoVolume * 100]}
+                onValueChange={([v]) => {
+                  setVideoVolume(v / 100)
+                  if (v > 0) setVideoMuted(false)
+                }}
+                min={0}
+                max={100}
+                step={5}
+                className="w-20"
+              />
+              <span className="text-[9px] text-zinc-500">{videoMuted ? '0%' : `${Math.round(videoVolume * 100)}%`}</span>
             </div>
           )}
 
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={openOutputInNewTab}
-              className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
-            >
-              <ExternalLink className="w-2.5 h-2.5" />
-              Mở tab mới
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={copyUrl}
-              className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
-            >
-              <Copy className="w-2.5 h-2.5" />
-              Copy URL
-            </Button>
+          {/* Video trim controls (only when current scene is video) */}
+          {isVideoScene && (
+            <div className="bg-zinc-800/60 rounded-md p-1.5 space-y-1.5 border border-zinc-700/50">
+              <div className="flex items-center gap-1">
+                <Scissors className="w-3 h-3 text-purple-400" />
+                <span className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">Cắt video</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-zinc-500 w-8">Bắt đầu</span>
+                <Input
+                  type="number"
+                  value={trimStartInput}
+                  onChange={(e) => setTrimStartInput(e.target.value)}
+                  placeholder="0"
+                  className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
+                  min={0}
+                  step={0.5}
+                />
+                <span className="text-[9px] text-zinc-500">giây</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-zinc-500 w-8">Kết thúc</span>
+                <Input
+                  type="number"
+                  value={trimEndInput}
+                  onChange={(e) => setTrimEndInput(e.target.value)}
+                  placeholder="cuối"
+                  className="h-5 flex-1 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1.5 min-w-0"
+                  min={0}
+                  step={0.5}
+                />
+                <span className="text-[9px] text-zinc-500">giây</span>
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  onClick={handleApplyTrim}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2 flex-1"
+                >
+                  Áp dụng
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleClearTrim}
+                  className="text-zinc-400 hover:text-red-400 text-[9px] h-5 px-2"
+                >
+                  Xoá cắt
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Screen size selector */}
+          <div className="flex items-center gap-1.5">
+            <MonitorUp className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+            <Select value={screenPreset} onValueChange={handleScreenPresetChange}>
+              <SelectTrigger className="h-6 flex-1 min-w-0 bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                <SelectValue placeholder="Kích thước" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-800 border-zinc-700">
+                {SCREEN_PRESETS.map((preset) => (
+                  <SelectItem key={preset.value} value={preset.value} className="text-zinc-300 text-[10px] focus:bg-zinc-700 focus:text-white">
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {screenPreset === 'custom' && (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(Number(e.target.value))}
+                  className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
+                  min={320}
+                  max={3840}
+                />
+                <span className="text-zinc-600 text-[9px]">×</span>
+                <Input
+                  type="number"
+                  value={customHeight}
+                  onChange={(e) => setCustomHeight(Number(e.target.value))}
+                  className="h-6 w-14 bg-zinc-800 border-zinc-700 text-zinc-300 text-[9px] px-1"
+                  min={240}
+                  max={2160}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleCustomSizeChange}
+                  className="h-6 w-6 p-0 text-emerald-400 hover:text-emerald-300"
+                >
+                  <span className="text-[9px]">✓</span>
+                </Button>
+              </div>
+            )}
+            {screenPreset !== 'custom' && (
+              <span className="text-[9px] text-zinc-600">{screenSize?.width}×{screenSize?.height}</span>
+            )}
           </div>
 
-          <div className="text-[8px] text-zinc-600 leading-relaxed pt-1 border-t border-zinc-700">
-            <p>• Cả 2 thiết bị phải cùng mạng WiFi/LAN</p>
-            <p>• Nhấn &quot;Chiếu&quot; hoặc &quot;Online&quot; trước khi mở URL trên thiết bị khác</p>
-            <p>• Nhấn fullscreen trên thiết bị chiếu</p>
+          {/* === PROJECTION BUTTONS === */}
+          <div className="flex items-center gap-1 pt-1 border-t border-zinc-800">
+            <Button
+              size="sm"
+              onClick={isLive ? handleStopAll : handleStartProjection}
+              className={`h-7 gap-1 px-3 flex-1 ${
+                isLive
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+            >
+              <MonitorUp className="w-3.5 h-3.5" />
+              {isLive ? (
+                <>
+                  <Pause className="w-3 h-3" />
+                  <span className="text-[10px]">Dừng</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3 h-3" />
+                  <span className="text-[10px]">Chiếu</span>
+                </>
+              )}
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={handleStartOnlineProjection}
+              className="h-7 gap-1 px-3 flex-1 bg-cyan-600 hover:bg-cyan-700 text-white"
+              disabled={isLive}
+            >
+              <GlobeIcon className="w-3.5 h-3.5" />
+              <span className="text-[10px]">Online</span>
+            </Button>
+
+            {isLive && (
+              <Button
+                size="sm"
+                onClick={handleStopAll}
+                className="h-7 gap-1 px-3 bg-red-800 hover:bg-red-900 text-white"
+              >
+                <Power className="w-3.5 h-3.5" />
+                <span className="text-[10px]">Tắt hết</span>
+              </Button>
+            )}
+          </div>
+
+          {/* Project save/load + remote connection row */}
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    saveProject()
+                    toast.success('Đã lưu dự án')
+                  }}
+                  className="text-zinc-500 hover:text-emerald-400 h-6 gap-1 px-2"
+                >
+                  <Save className="w-3 h-3" />
+                  <span className="text-[9px]">Lưu</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                Lưu dự án vào trình duyệt
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    loadProject()
+                    toast.success('Đã mở dự án')
+                  }}
+                  className="text-zinc-500 hover:text-cyan-400 h-6 gap-1 px-2"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  <span className="text-[9px]">Mở</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                Mở dự án đã lưu
+              </TooltipContent>
+            </Tooltip>
+
+            <div className="flex-1" />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowRemoteInfo(!showRemoteInfo)}
+                  className={`h-6 gap-1 px-2 ${showRemoteInfo ? 'text-cyan-400' : 'text-zinc-500 hover:text-cyan-400'}`}
+                >
+                  <Wifi className="w-3 h-3" />
+                  <span className="text-[9px]">Thiết bị khác</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700 text-zinc-300 text-[10px]">
+                Chiếu từ thiết bị khác qua mạng LAN
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* Remote connection info panel */}
+          {showRemoteInfo && (
+            <div className="bg-zinc-800/80 rounded-md p-2 space-y-2 border border-zinc-700">
+              <div className="flex items-center gap-1.5">
+                <Wifi className="w-3 h-3 text-cyan-400" />
+                <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Chiếu từ thiết bị khác</span>
+              </div>
+
+              <p className="text-[9px] text-zinc-400 leading-relaxed">
+                Mở URL bên dưới trên thiết bị khác (cùng mạng WiFi/LAN) để hiển thị màn hình chiếu:
+              </p>
+
+              {outputUrl && (
+                <div className="flex items-center gap-1 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-600">
+                  <code className="text-[10px] text-emerald-400 font-mono flex-1 truncate">{outputUrl}</code>
+                  <button
+                    onClick={copyUrl}
+                    className="text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+                  >
+                    {copied ? (
+                      <span className="text-[8px] text-emerald-400">Đã copy!</span>
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
+              )}
+
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={openOutputInNewTab}
+                  className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  Mở tab mới
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={copyUrl}
+                  className="text-[9px] text-zinc-400 hover:text-white h-5 gap-1 px-2"
+                >
+                  <Copy className="w-2.5 h-2.5" />
+                  Copy URL
+                </Button>
+              </div>
+
+              <div className="text-[8px] text-zinc-600 leading-relaxed pt-1 border-t border-zinc-700">
+                <p>• Cả 2 thiết bị phải cùng mạng WiFi/LAN</p>
+                <p>• Nhấn &quot;Chiếu&quot; hoặc &quot;Online&quot; trước khi mở URL trên thiết bị khác</p>
+                <p>• Nhấn fullscreen trên thiết bị chiếu</p>
+              </div>
+            </div>
+          )}
+
+          {/* === TEXT OVERLAY SECTION (merged from TextOverlayPanel) === */}
+          <div className="border-t border-zinc-800 pt-2">
+            <button
+              onClick={() => setShowOverlaySection(!showOverlaySection)}
+              className="flex items-center gap-1.5 w-full hover:bg-zinc-800/50 rounded px-1 py-0.5 transition-colors"
+            >
+              {showOverlaySection ? (
+                <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />
+              ) : (
+                <ChevronRightIcon className="w-3 h-3 text-zinc-500 flex-shrink-0" />
+              )}
+              <Bell className="w-3 h-3 text-zinc-400" />
+              <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider flex-1 text-left">
+                Thông báo
+              </span>
+              {textOverlays?.length > 0 && (
+                <span className="text-[9px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded-full">
+                  {textOverlays.length}
+                </span>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowOverlayForm(!showOverlayForm)
+                }}
+                className="text-emerald-400 hover:text-emerald-300 h-5 w-5 p-0"
+              >
+                <Plus className="w-3 h-3" />
+              </Button>
+            </button>
+
+            {showOverlaySection && (
+              <div className="mt-1.5 space-y-1.5">
+                {/* Template presets row */}
+                <div className="flex gap-0.5 flex-wrap">
+                  {OVERLAY_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      onClick={() => applyTemplate(template)}
+                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[9px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                      title={template.label}
+                    >
+                      <span className="text-[10px]">{template.icon}</span>
+                      <span>{template.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {showOverlayForm && (
+                  <div className="p-1.5 bg-zinc-800 rounded-md space-y-1">
+                    <Input
+                      value={newText}
+                      onChange={(e) => setNewText(e.target.value)}
+                      placeholder="Nhập thông báo..."
+                      className="bg-zinc-700 border-zinc-600 text-zinc-200 text-[10px] h-6"
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddOverlay()}
+                    />
+                    <div className="grid grid-cols-2 gap-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] text-zinc-500">Cỡ</span>
+                        <Input
+                          type="number"
+                          value={formFontSize}
+                          onChange={(e) => setFormFontSize(Number(e.target.value))}
+                          className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1 w-12"
+                          min={8}
+                          max={200}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] text-zinc-500">Vị trí</span>
+                        <Select value={formPosition} onValueChange={(v) => setFormPosition(v as 'top' | 'bottom' | 'center')}>
+                          <SelectTrigger className="h-5 bg-zinc-900 border-zinc-600 text-zinc-300 text-[9px] px-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-zinc-800 border-zinc-600">
+                            <SelectItem value="top" className="text-[9px]">Trên</SelectItem>
+                            <SelectItem value="center" className="text-[9px]">Giữa</SelectItem>
+                            <SelectItem value="bottom" className="text-[9px]">Dưới</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] text-zinc-500">Chữ</span>
+                        <input
+                          type="color"
+                          value={formFontColor}
+                          onChange={(e) => setFormFontColor(e.target.value)}
+                          className="w-5 h-5 rounded cursor-pointer border-0"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] text-zinc-500">Nền</span>
+                        <input
+                          type="color"
+                          value={formBgColor.startsWith('rgba') || formBgColor.startsWith('rgb') ? '#000000' : formBgColor}
+                          onChange={(e) => setFormBgColor(e.target.value)}
+                          className="w-5 h-5 rounded cursor-pointer border-0"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        onClick={handleAddOverlay}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] h-5 px-2"
+                      >
+                        Thêm
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={resetOverlayForm}
+                        className="text-zinc-400 text-[9px] h-5 px-2"
+                      >
+                        Hủy
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Overlay list */}
+                {textOverlays?.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {textOverlays.map((overlay: any) => (
+                      <div
+                        key={overlay.id}
+                        className="flex items-center gap-1 px-1.5 py-1 rounded-md bg-zinc-800/50 group"
+                      >
+                        <button onClick={() => toggleTextOverlay(overlay.id)} className="flex-shrink-0">
+                          {overlay.visible ? (
+                            <Eye className="w-3 h-3 text-emerald-400" />
+                          ) : (
+                            <EyeOff className="w-3 h-3 text-zinc-500" />
+                          )}
+                        </button>
+                        <span className="text-[10px] text-zinc-300 truncate flex-1">{overlay.text}</span>
+                        <span className="text-[8px] text-zinc-600">{overlay.fontSize}px</span>
+                        <button
+                          onClick={() => removeTextOverlay(overlay.id)}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-opacity"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[9px] text-zinc-600 text-center py-1">
+                    Thêm thông báo chữ để hiện trên màn hình chiếu
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </ScrollArea>
     </div>
   )
+}
+
+/**
+ * @deprecated Use ControlPanel instead - TextOverlayPanel is now merged into ControlPanel
+ */
+export function TextOverlayPanel() {
+  // This component is now merged into ControlPanel
+  // Keeping the export for backward compatibility but it renders nothing
+  return null
 }

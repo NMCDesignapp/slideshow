@@ -72,6 +72,12 @@ export function setVideoPaused(paused: boolean) {
       }, window.location.origin)
     }
   } catch { /* ignore */ }
+  // Also send via BroadcastChannel for more reliable delivery
+  try {
+    const bc = new BroadcastChannel('showflow-sync')
+    bc.postMessage({ type: paused ? 'VIDEO_PAUSE' : 'VIDEO_PLAY' })
+    bc.close()
+  } catch { /* ignore */ }
   // Also send via API for remote devices
   fetch('/api/sync', {
     method: 'POST',
@@ -101,11 +107,14 @@ interface MediaRendererProps {
  * - Video preloading and seamless playback
  * - Video only auto-plays in OUTPUT window, not in preview panels
  * - Supports trimStart/trimEnd for video trimming
+ * - For output: starts muted to satisfy autoplay policy, unmutes after first play
  */
 export const MediaRenderer = memo(function MediaRenderer({ scene, className = '', isActive = true, keepAlive = false, isPreview = false }: MediaRendererProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoVolume = usePresentationStore((s) => s.videoVolume)
   const videoMuted = usePresentationStore((s) => s.videoMuted)
+  // Track whether video has successfully started playing at least once
+  const hasStartedRef = useRef(false)
 
   // Whether video should actually play (only in output window, not in preview)
   const shouldAutoPlay = isActive && keepAlive && !isPreview
@@ -114,6 +123,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
   useEffect(() => {
     if (scene.type === 'video' && videoRef.current && shouldAutoPlay) {
       const video = videoRef.current
+      hasStartedRef.current = false
       // Use requestAnimationFrame for smooth startup
       requestAnimationFrame(() => {
         // Apply trim start
@@ -122,7 +132,19 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
         } else {
           video.currentTime = 0
         }
-        video.play().catch(() => {})
+        // Start muted to satisfy autoplay policy, will unmute after play starts
+        video.muted = true
+        const playPromise = video.play()
+        if (playPromise) {
+          playPromise.then(() => {
+            hasStartedRef.current = true
+            // Now apply the actual muted state from store
+            video.muted = videoMuted
+            video.volume = videoVolume
+          }).catch(() => {
+            // Autoplay blocked - will be retried by keep-alive loop
+          })
+        }
       })
     }
   }, [scene.id, scene.type, shouldAutoPlay, scene.trimStart])
@@ -157,9 +179,9 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
     return () => video.removeEventListener('timeupdate', handleTimeUpdate)
   }, [scene.type, shouldAutoPlay, scene.trimStart, scene.trimEnd])
 
-  // Sync volume/mute
+  // Sync volume/mute - only after video has started playing
   useEffect(() => {
-    if (videoRef.current) {
+    if (videoRef.current && hasStartedRef.current) {
       videoRef.current.volume = videoVolume
       videoRef.current.muted = videoMuted
     }
@@ -174,7 +196,15 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
     const forcePlay = () => {
       if (!videoRef.current) return
       if (videoRef.current.paused && !videoRef.current.ended && shouldAutoPlay && !videoPausedByUser) {
-        videoRef.current.play().catch(() => {})
+        // Try playing muted first if not yet started, then unmute
+        if (!hasStartedRef.current) {
+          videoRef.current.muted = true
+        }
+        videoRef.current.play().then(() => {
+          hasStartedRef.current = true
+          videoRef.current!.muted = videoMuted
+          videoRef.current!.volume = videoVolume
+        }).catch(() => {})
       }
     }
 
@@ -230,7 +260,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
           <img
             src={scene.thumbnail}
             alt={scene.name || 'Video'}
-            className="max-w-full max-h-full object-contain opacity-80"
+            className="w-full h-full object-contain opacity-80"
             loading="eager"
           />
           {/* Play icon overlay */}
@@ -269,7 +299,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
             <img
               src={scene.src}
               alt={scene.name || 'Image'}
-              className="max-w-full max-h-full object-contain"
+              className="w-full h-full object-contain"
               style={{ willChange: 'transform', imageRendering: 'auto' }}
               loading="eager"
               decoding="async"
@@ -285,12 +315,12 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
             <video
               ref={videoRef}
               src={scene.src}
-              className="max-w-full max-h-full"
+              className="w-full h-full"
               style={{ objectFit: 'contain', willChange: 'transform' }}
               controls={false}
               loop
               autoPlay={shouldAutoPlay}
-              muted={videoMuted}
+              muted={true}
               playsInline
               preload="auto"
               disablePictureInPicture
@@ -342,7 +372,7 @@ export const MediaRenderer = memo(function MediaRenderer({ scene, className = ''
             <img
               src={scene.src}
               alt={scene.name || 'PPTX Slide'}
-              className="max-w-full max-h-full object-contain"
+              className="w-full h-full object-contain"
               style={{ willChange: 'transform' }}
               loading="eager"
               decoding="async"
@@ -482,8 +512,9 @@ export const TransitionRenderer = memo(function TransitionRenderer({
 
 /**
  * Component that syncs with the output window for dual-screen projection
- * Supports both:
+ * Supports:
  * - LOCAL: postMessage to popup window (same device, dual monitor)
+ * - LOCAL: BroadcastChannel for more reliable same-origin sync
  * - REMOTE: POST to /api/sync for cross-device (SSE to output page)
  * Now includes per-slide transition overrides
  */
@@ -511,7 +542,7 @@ export function OutputSync() {
     const output = getOutputContent()
     if (!output) return
 
-    // MODE 1: Local sync (postMessage to popup window)
+    // MODE 1a: Local sync (postMessage to popup window)
     try {
       const outputWindow = usePresentationStore.getState().outputWindowRef
       if (outputWindow && !outputWindow.closed) {
@@ -521,6 +552,16 @@ export function OutputSync() {
         }, window.location.origin)
       }
     } catch { /* Window may be closed */ }
+
+    // MODE 1b: BroadcastChannel for more reliable same-origin sync
+    try {
+      const bc = new BroadcastChannel('showflow-sync')
+      bc.postMessage({
+        type: 'PRESENTATION_UPDATE',
+        payload: output,
+      })
+      bc.close()
+    } catch { /* BroadcastChannel not available */ }
 
     // MODE 2: Remote sync (POST to API for cross-device SSE)
     fetch('/api/sync', {

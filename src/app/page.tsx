@@ -3,7 +3,7 @@
 import React, { useEffect, useCallback } from 'react'
 import { usePresentationStore } from '@/store/presentation-store'
 import { PreviewPanel } from '@/components/presentation/preview-panel'
-import { SceneList, TextOverlayPanel, ControlPanel } from '@/components/presentation/scene-list'
+import { SceneList, ControlPanel } from '@/components/presentation/scene-list'
 import { OutputSync } from '@/components/presentation/media-renderer'
 import { Toaster, toast } from 'sonner'
 import {
@@ -76,9 +76,6 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
-  // Output sync is now handled entirely by OutputSync component
-  // (removed duplicate postMessage logic that was sending data twice)
-
   return (
     <TooltipProvider delayDuration={300}>
       <Toaster theme="dark" position="bottom-right" />
@@ -125,36 +122,26 @@ export default function Home() {
 
             <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
-            {/* Bottom area - edit + controls, all integrated */}
+            {/* Bottom area - scene list + controls */}
             <ResizablePanel defaultSize={45} minSize={25}>
-              <div className="h-full flex flex-col">
-                {/* Edit panels - left: scene list, right: controls + overlays */}
-                <div className="flex-1 min-h-0 p-2 pt-1 pb-1">
-                  <ResizablePanelGroup direction="horizontal">
-                    {/* Scene list */}
-                    <ResizablePanel defaultSize={55} minSize={35}>
-                      <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
-                        <SceneList />
-                      </div>
-                    </ResizablePanel>
+              <div className="h-full p-2 pt-1">
+                <ResizablePanelGroup direction="horizontal">
+                  {/* Scene list */}
+                  <ResizablePanel defaultSize={55} minSize={35}>
+                    <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
+                      <SceneList />
+                    </div>
+                  </ResizablePanel>
 
-                    <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
+                  <ResizableHandle className="bg-zinc-800 hover:bg-emerald-600/50 transition-colors" />
 
-                    {/* Right panel: Controls on top, Overlays below */}
-                    <ResizablePanel defaultSize={45} minSize={25}>
-                      <div className="h-full flex flex-col gap-1">
-                        {/* Control panel - integrated into the editing area */}
-                        <div className="flex-[1.5] bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
-                          <ControlPanel />
-                        </div>
-                        {/* Text overlays */}
-                        <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden min-h-0">
-                          <TextOverlayPanel />
-                        </div>
-                      </div>
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
-                </div>
+                  {/* Control panel (now includes text overlay section) */}
+                  <ResizablePanel defaultSize={45} minSize={25}>
+                    <div className="h-full bg-zinc-900 rounded-lg border border-zinc-800 p-2 overflow-hidden">
+                      <ControlPanel />
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>

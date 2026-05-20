@@ -85,19 +85,13 @@ const OverlayRenderer = memo(function OverlayRenderer({ overlays }: { overlays: 
   )
 })
 
-// Aspect ratio options for output display
-const ASPECT_RATIOS = [
-  { label: '16:9', value: '16:9', widthRatio: 16, heightRatio: 9 },
-  { label: '4:3', value: '4:3', widthRatio: 4, heightRatio: 3 },
-]
-
 export default function OutputPage() {
   const [state, setState] = useState<OutputState>({ type: 'empty' })
   const [prevScene, setPrevScene] = useState<Scene | undefined>(undefined)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [connected, setConnected] = useState(false)
   const [videoPaused, setVideoPaused] = useState(false)
-  const [aspectRatio, setAspectRatio] = useState<string>('16:9')
+  const [userInteracted, setUserInteracted] = useState(false)
   const prevSceneIdRef = useRef<string | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -113,6 +107,25 @@ export default function OutputPage() {
       containerRef.current.requestFullscreen?.()
     }
   }, [])
+
+  // === HANDLE FIRST USER INTERACTION FOR AUTOPLAY ===
+  const handleUserInteraction = useCallback(() => {
+    if (userInteracted) return
+    setUserInteracted(true)
+
+    // Resume AudioContext
+    if (outputAudioCtx?.state === 'suspended') {
+      outputAudioCtx.resume().catch(() => {})
+    }
+
+    // Force play all videos
+    const videos = document.querySelectorAll('video')
+    videos.forEach((v) => {
+      if (v.paused && !v.ended) {
+        v.play().catch(() => {})
+      }
+    })
+  }, [userInteracted])
 
   // === BACKGROUND PLAYBACK FIX ===
   useEffect(() => {
@@ -134,7 +147,16 @@ export default function OutputPage() {
       const videos = document.querySelectorAll('video')
       videos.forEach((v) => {
         if (v.paused && !v.ended) {
-          v.play().catch(() => {})
+          // Start muted if needed for autoplay policy
+          if (!userInteracted) {
+            v.muted = true
+          }
+          v.play().then(() => {
+            // Unmute after successful play if user has interacted
+            if (userInteracted) {
+              v.muted = false
+            }
+          }).catch(() => {})
         }
       })
     }
@@ -204,9 +226,9 @@ export default function OutputPage() {
       })
       if (wakeLock) wakeLock.release?.()
     }
-  }, [videoPaused])
+  }, [videoPaused, userInteracted])
 
-  // === STATE UPDATE HANDLER (shared by both local and remote) ===
+  // === STATE UPDATE HANDLER (shared by all sync modes) ===
   const handleStateUpdate = useCallback((payload: OutputState) => {
     const newId = payload.scene?.id
 
@@ -258,6 +280,35 @@ export default function OutputPage() {
 
     return () => {
       window.removeEventListener('message', handler)
+    }
+  }, [handleStateUpdate])
+
+  // === MODE 1b: BroadcastChannel sync (more reliable than postMessage) ===
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel('showflow-sync')
+      bc.onmessage = (event) => {
+        const data = event.data
+        if (data?.type === 'PRESENTATION_UPDATE') {
+          setConnected(true)
+          handleStateUpdate(data.payload as OutputState)
+        }
+        if (data?.type === 'VIDEO_PAUSE') {
+          setVideoPaused(true)
+          document.querySelectorAll('video').forEach((v) => v.pause())
+        }
+        if (data?.type === 'VIDEO_PLAY') {
+          setVideoPaused(false)
+          document.querySelectorAll('video').forEach((v) => {
+            v.play().catch(() => {})
+          })
+        }
+      }
+    } catch { /* BroadcastChannel not supported */ }
+
+    return () => {
+      bc?.close()
     }
   }, [handleStateUpdate])
 
@@ -323,9 +374,6 @@ export default function OutputPage() {
   const duration = `${transitionDuration}ms`
   const durationVar = { '--transition-duration': duration } as React.CSSProperties
 
-  // Calculate aspect ratio container
-  const selectedRatio = ASPECT_RATIOS.find(r => r.value === aspectRatio) || ASPECT_RATIOS[0]
-
   const renderScene = () => {
     if (state.type === 'black') {
       return <div className="absolute inset-0 bg-black z-10" />
@@ -387,43 +435,30 @@ export default function OutputPage() {
         transform: 'translateZ(0)',
         backfaceVisibility: 'hidden',
       }}
-      onClick={handleFullscreen}
+      onClick={(e) => {
+        handleUserInteraction()
+        handleFullscreen()
+      }}
       onDoubleClick={() => document.exitFullscreen?.()}
+      onKeyDown={() => handleUserInteraction()}
+      onMouseMove={() => handleUserInteraction()}
     >
-      {/* Aspect ratio container - centers content within the full screen */}
+      {/* 16:9 aspect ratio container - centers content within the full screen */}
       <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="relative w-full h-full"
-          style={{
-            aspectRatio: `${selectedRatio.widthRatio} / ${selectedRatio.heightRatio}`,
-            maxWidth: aspectRatio === '4:3' ? `${(selectedRatio.widthRatio / selectedRatio.heightRatio) * 100}vh` : undefined,
-            maxHeight: aspectRatio === '4:3' ? '100%' : undefined,
-          }}
-        >
+        <div className="relative w-full h-full max-w-[177.78vh] max-h-full">
           {renderScene()}
           {state.overlays && <OverlayRenderer overlays={state.overlays} />}
         </div>
       </div>
 
-      {/* Aspect ratio buttons - top-left, appear on hover */}
-      <div className="absolute top-3 left-3 z-50 opacity-0 group-hover:opacity-70 transition-opacity duration-300 flex gap-1">
-        {ASPECT_RATIOS.map((ratio) => (
-          <button
-            key={ratio.value}
-            onClick={(e) => {
-              e.stopPropagation()
-              setAspectRatio(ratio.value)
-            }}
-            className={`px-2 py-1 rounded text-[10px] font-mono transition-colors ${
-              aspectRatio === ratio.value
-                ? 'bg-white/20 text-white'
-                : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/60'
-            }`}
-          >
-            {ratio.label}
-          </button>
-        ))}
-      </div>
+      {/* Click-to-activate overlay (shown when no user interaction yet) */}
+      {!userInteracted && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+          <div className="text-white/10 text-center animate-pulse">
+            <p className="text-sm">Nhấn để kích hoạt âm thanh</p>
+          </div>
+        </div>
+      )}
 
       {/* Connection status indicator - subtle, top right */}
       {connectionMode === 'remote' && (

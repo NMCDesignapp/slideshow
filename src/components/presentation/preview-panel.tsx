@@ -140,9 +140,6 @@ export function PreviewPanel() {
     }
   }
 
-  // Aspect ratio for previews
-  const aspectRatio = screenSize.width / screenSize.height
-
   return (
     <div className="flex gap-2 flex-1 min-h-0 h-full">
       {/* FILMSTRIP - only shown when PPTX slides present */}
@@ -181,15 +178,17 @@ export function PreviewPanel() {
         </div>
       )}
 
-      {/* LEFT - "Tiếp theo" (Next) preview - EQUAL size */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* LEFT - "Tiếp theo" (Next) preview */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex items-center gap-2 mb-1.5">
           <div className="w-2 h-2 rounded-full bg-zinc-600" />
           <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tiếp theo</span>
         </div>
-        <div className="flex-1 max-h-full bg-black rounded-lg overflow-hidden border border-zinc-800 relative" style={{ aspectRatio: aspectRatio }}>
+        <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-zinc-800 relative flex items-center justify-center">
           {nextScene ? (
-            <MediaRenderer scene={nextScene} isActive={false} isPreview={true} />
+            <div className="w-full h-full max-w-[177.78%]">
+              <MediaRenderer scene={nextScene} isActive={false} isPreview={true} />
+            </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-700">
               <div className="text-center">
@@ -260,8 +259,8 @@ export function PreviewPanel() {
         </button>
       </div>
 
-      {/* RIGHT - Main preview (ĐANG CHIẾU) - EQUAL size */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* RIGHT - Main preview (ĐANG CHIẾU) */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex items-center gap-2 mb-1.5">
           <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} />
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -273,23 +272,25 @@ export function PreviewPanel() {
             </span>
           )}
         </div>
-        <div className="flex-1 max-h-full bg-black rounded-lg overflow-hidden border border-zinc-700 relative" style={{ aspectRatio: aspectRatio }}>
+        <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden border border-zinc-700 relative flex items-center justify-center">
           {blackScreen ? (
-            <div className="absolute inset-0 bg-black flex items-center justify-center">
+            <div className="w-full h-full flex items-center justify-center">
               <div className="text-zinc-700 text-center">
                 <Monitor className="w-12 h-12 mx-auto mb-2 opacity-20" />
                 <p className="text-xs">Màn hình đen</p>
               </div>
             </div>
           ) : currentScene ? (
-            <TransitionRenderer
-              scene={currentScene}
-              transitionType={transitionType}
-              transitionDuration={transitionDuration}
-              isActive={true}
-              keepAlive={isLive}
-              isPreview={true}
-            />
+            <div className="w-full h-full max-w-[177.78%]">
+              <TransitionRenderer
+                scene={currentScene}
+                transitionType={transitionType}
+                transitionDuration={transitionDuration}
+                isActive={true}
+                keepAlive={isLive}
+                isPreview={true}
+              />
+            </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-600">
               <div className="text-center">
